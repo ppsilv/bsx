@@ -1,0 +1,2120 @@
+# file opened: build.z80
+  1   0000              ;
+  2   0000              ; Title:	Z80 Monitor for BSX
+  3   0000              ; Author:	Dean Belfield
+  4   0000              ; Created:	05/06/2020
+  5   0000              ; Last Updated:	05/10/2020
+  6   0000              ;
+  7   0000              ; Modinfo:
+  8   0000              ;
+  9   0000              ; 05/10/2020:	Added UART support, source formatting changes
+ 10   0000
+ 11   0000              ; Defines
+ 12   0000              ;
+ 13   0000              ROM_START		EQU 	0x0000			; Start of ROM
+ 14   0000              BAS_START		EQU	0x4000			; Location of BBC Basic in ROM
+ 15   0000              RAM_START		EQU 	0x8000			; Start of RAM
+ 16   0000              SYS_VARS		EQU	0xFF00			; System variable block
+ 17   0000
+ 18   0000              SYS_VARS_RAMTOP		EQU 	SYS_VARS + 0x00
+ 19   0000              SYS_VARS_INPUT		EQU	SYS_VARS + 0x02
+ 20   0000
+ 21   0000              ;PORT_STM_IO 		EQU	0x00			; The IO port for serial terminal IO - depreciated
+ 22   0000              ;PORT_STM_FLAGS		EQU	0x07			; Flags - depreciated
+ 23   0000
+ 24   0000              BUILD_ROM		EQU 	1			; Set to 1 to build for ROM, or 0 to build for RAM
+ 25   0000              SKIP_MEMTEST		EQU	0			; Set to 1 to skip the memtest on boot - leave this until proper clock fitted
+ 26   0000
+ 27   0000              			IF	BUILD_ROM = 0
+ 28   0000 ~            			ORG	RAM_START
+ 29   0000              			ELSE
+ 30   0000              			ORG	ROM_START
+ 31   0000              			include	"rom.z80"
+# file opened: rom.z80
+  1+  0000              ;
+  2+  0000              ; Title:	ROM specific code for Monitor
+  3+  0000              ; Author:	Dean Belfield
+  4+  0000              ; Created:	05/06/2020
+  5+  0000              ; Last Updated:	11/10/2020
+  6+  0000              ;
+  7+  0000              ; Modinfo:
+  8+  0000              ;
+  9+  0000              ; 11/10/2020:	UART mods
+ 10+  0000
+ 11+  0000              ;
+ 12+  0000              ; RST 00
+ 13+  0000              ;
+ 14+  0000 F3           			DI
+ 15+  0001 C3 3A 00     			JP Start
+ 16+  0004 00 00 00 00  			DS 4
+ 17+  0008              ;
+ 18+  0008              ; RST 08 - Read char from I/O
+ 19+  0008              ;
+ 20+  0008 C3 7A 02     			JP Read_Char_NB
+ 21+  000B 00 00 00...  			DS 5
+ 22+  0010              ;
+ 23+  0010              ; RST 10 - Output char to I/O
+ 24+  0010              ;
+ 25+  0010 C3 71 02     			JP Print_Char
+ 26+  0013 00 00 00...  			DS 5
+ 27+  0018              ;
+ 28+  0018              ; RST 18
+ 29+  0018              ;
+ 30+  0018 00 00 00...  			DS 8
+ 31+  0020              ;
+ 32+  0020              ; RST 20
+ 33+  0020              ;
+ 34+  0020 00 00 00...  			DS 8
+ 35+  0028              ;
+ 36+  0028              ; RST 28
+ 37+  0028              ;
+ 38+  0028 00 00 00...  			DS 8
+ 39+  0030              ;
+ 40+  0030              ; RST 30
+ 41+  0030              ;
+ 42+  0030 00 00 00...  			DS 8
+ 43+  0038              ;
+ 44+  0038              ; RST 38 - NMI
+ 45+  0038              ;
+ 46+  0038 FB           			EI
+ 47+  0039 C9           			RET
+ 48+  003A
+# file closed: rom.z80
+ 32   003A              			ENDIF
+ 33   003A              			include	"monitor.z80"
+# file opened: monitor.z80
+  1+  003A              ;
+  2+  003A              ; Title:        Z80 Monitor for BSX
+  3+  003A              ; Author:       Dean Belfield
+  4+  003A              ; Created:      12/05/2020
+  5+  003A              ; Last Updated: 05/10/2020
+  6+  003A              ;
+  7+  003A              ; Modinfo:
+  8+  003A              ; 22/05/2020:   Moved SYS_VARS to last page of RAM
+  9+  003A              ;               Added B option to jump to BBC Basic
+ 10+  003A              ; 28/05/2020:   Added O(ut) and I(n) instructions
+ 11+  003A              ;               Added ASCII column for memory dump
+ 12+  003A              ; 29/05/2020:   O(ut) instruction now supports Hex and ASCII strings
+ 13+  003A              ; 03/06/2020:   Added Z80 disassembler
+ 14+  003A              ; 05/10/2020:   Added UART support, source formatting changes
+ 15+  003A              ;
+ 16+  003A
+ 17+  003A              ;
+ 18+  003A              ; Start
+ 19+  003A              ;
+ 20+  003A              Start:                  IF      SKIP_MEMTEST = 1
+ 21+  003A ~                                    LD      HL,0x0000
+ 22+  003A ~                                    XOR     A
+ 23+  003A ~                                    JR      3F
+ 24+  003A                                      ELSE
+ 25+  003A 21 00 80                             LD      HL,RAM_START
+ 26+  003D 0E AA                                LD      C, 10101010b
+ 27+  003F 71           1:                      LD      (HL),C
+ 28+  0040 7E                                   LD      A,(HL)
+ 29+  0041 B9                                   CP      C
+ 30+  0042 20 09                                JR      NZ,3F
+ 31+  0044 23                                   INC     HL
+ 32+  0045 7D                                   LD      A,L
+ 33+  0046 B7                                   OR      A
+ 34+  0047 20 00                                JR      NZ,2F
+ 35+  0049              ;                       LD      A,"."
+ 36+  0049              ;                       OUT     (PORT_STM_IO),A         ; Output progress - no longer works (STM_IO depreciated)
+ 37+  0049 7C           2:                      LD      A,H
+ 38+  004A B7                                   OR      A
+ 39+  004B 20 F2                                JR      NZ,1B
+ 40+  004D                                      ENDIF
+ 41+  004D 22 00 FF     3:                      LD      (SYS_VARS_RAMTOP),HL    ; Store last byte of physical RAM in the system variables
+ 42+  0050 F9                                   LD      SP,HL                   ; Set the stack pointer
+ 43+  0051 28 05                                JR      Z,Memtest_OK
+ 44+  0053 21 D1 02                             LD      HL,MSG_BADRAM
+ 45+  0056 18 03                                JR      Ready
+ 46+  0058 21 C8 02     Memtest_OK:             LD      HL,MSG_READY
+ 47+  005B
+ 48+  005B E5           Ready:                  PUSH    HL                      ; Stack the startup error message
+ 49+  005C 21 CE 0D                             LD      HL,UART_BAUD_38400       ; Baud rate = 9600
+ 50+  005F 3E 03                                LD      A,0x03                  ; 8 bits, 1 stop, no parity
+ 51+  0061 CD 78 0D                             CALL    UART_INIT               ; Initialise the UART
+ 52+  0064 21 B4 02                             LD      HL,MSG_STARTUP
+ 53+  0067 CD A4 01                             CALL    Print_String
+ 54+  006A E1                                   POP     HL
+ 55+  006B CD A4 01                             CALL    Print_String
+ 56+  006E
+ 57+  006E 21 02 FF     Input:                  LD      HL,SYS_VARS_INPUT       ; Input buffer
+ 58+  0071 06 00                                LD      B,0                     ; Cursor position
+ 59+  0073 CD 74 02     Input_Loop:             CALL    Read_Char               ; Read a key from the keyboard
+ 60+  0076 CD 71 02                             CALL    Print_Char              ; Output the character
+ 61+  0079 FE 7F                                CP      0x7F
+ 62+  007B 28 57                                JR      Z,Input_Backspace       ; Handle backspace
+ 63+  007D
+ 64+  007D 77                                   LD      (HL),A                  ; Store the character in the buffer
+ 65+  007E 23                                   INC     HL                      ; Increment to next character in buffer
+ 66+  007F 04                                   INC     B                       ; Increment the cursor position
+ 67+  0080 FE 0D                                CP      0x0D                    ; Check for newline
+ 68+  0082 20 EF                                JR      NZ,Input_Loop           ; If not pressed, then loop
+ 69+  0084
+ 70+  0084 CD 67 02                             CALL    Print_CR                ; Output a carriage return
+ 71+  0087
+ 72+  0087 3A 02 FF                             LD      A,(SYS_VARS_INPUT)      ; Check the first character of input
+ 73+  008A 21 C9 00                             LD      HL,Input_Ret            ; Push the return address on the stack
+ 74+  008D E5                                   PUSH    HL
+ 75+  008E FE 42                                CP      'B'
+ 75+  0090 CA DE 00       JP Z,FN_Basic
+ 76+  0093 FE 44                                CP      'D'
+ 76+  0095 CA 66 01       JP Z,FN_Disassemble
+ 77+  0098 FE 4D                                CP      'M'
+ 77+  009A CA 88 01       JP Z,FN_Memory_Dump
+ 78+  009D FE 4C                                CP      'L'
+ 78+  009F CA 4B 01       JP Z,FN_Memory_Load
+ 79+  00A2 FE 4A                                CP      'J'
+ 79+  00A4 CA E1 00       JP Z,FN_Jump
+ 80+  00A7 FE 4F                                CP      'O'
+ 80+  00A9 CA E9 00       JP Z,FN_Port_Out
+ 81+  00AC FE 49                                CP      'I'
+ 81+  00AE CA 25 01       JP Z,FN_Port_In
+ 82+  00B1 FE 3F                                CP      '?'
+ 82+  00B3 CA 7D 02       JP Z,Print_Help
+ 83+  00B6 FE 48                                CP      'H'
+ 83+  00B8 CA 7D 02       JP Z,Print_Help
+ 84+  00BB FE 68                                CP      'h'
+ 84+  00BD CA 7D 02       JP Z,Print_Help
+ 85+  00C0 FE 0D                                CP      0x0D
+ 86+  00C2 C8                                   RET     Z
+ 87+  00C3 21 E5 02                             LD      HL,MSG_INVALID_CMD      ; Unknown command error
+ 88+  00C6 C3 A4 01                             JP      Print_String
+ 89+  00C9
+ 90+  00C9 CD 67 02     Input_Ret:              CALL    Print_CR                ; On return from the function, print a carriage return
+ 91+  00CC 21 C8 02                             LD      HL,MSG_READY            ; And the ready message
+ 92+  00CF CD A4 01                             CALL    Print_String
+ 93+  00D2 18 9A                                JR      Input                   ; Loop around for next input line
+ 94+  00D4
+ 95+  00D4 78           Input_Backspace:        LD      A,B                     ; Are we on the first character?
+ 96+  00D5 B7                                   OR      A
+ 97+  00D6 28 9B                                JR      Z,Input_Loop
+ 98+  00D8 2B                                   DEC     HL                      ; Skip back in the buffer
+ 99+  00D9 05                                   DEC     B
+100+  00DA 36 00                                LD      (HL),0
+101+  00DC 18 95                                JR      Input_Loop
+102+  00DE
+103+  00DE C3 00 40     FN_Basic:               JP      BAS_START
+104+  00E1
+105+  00E1 21 03 FF     FN_Jump:                LD      HL,SYS_VARS_INPUT+1
+106+  00E4 CD 27 02                             CALL    Parse_Hex16
+107+  00E7 EB                                   EX      DE,HL
+108+  00E8 E9                                   JP      (HL)
+109+  00E9
+110+  00E9 21 03 FF     FN_Port_Out:            LD      HL,SYS_VARS_INPUT+1
+111+  00EC CD 27 02                             CALL    Parse_Hex16
+112+  00EF 7E                                   LD      A,(HL)
+113+  00F0 FE 2C                                CP      ','
+114+  00F2 20 2B                                JR      NZ,FN_Port_Out_Err2
+115+  00F4 23                                   INC     HL
+116+  00F5 7A                                   LD      A,D
+117+  00F6 B7                                   OR      A
+118+  00F7 20 20                                JR      NZ,FN_Port_Out_Err1
+119+  00F9 4B                                   LD      C,E
+120+  00FA 7E           1:                      LD      A,(HL)
+121+  00FB FE 0D                                CP      0x0D    ; CR
+122+  00FD C8                                   RET     Z
+123+  00FE FE 22                                CP      0x22    ; Quote
+124+  0100 28 07                                JR      Z,2F
+125+  0102 CD 20 02                             CALL    Parse_Hex8
+126+  0105 ED 59                                OUT     (C),E
+127+  0107 18 F1                                JR      1B
+128+  0109
+129+  0109 23           2:                      INC     HL
+130+  010A 7E                                   LD      A,(HL)
+131+  010B FE 0D                                CP      0x0D
+132+  010D C8                                   RET     Z
+133+  010E FE 22                                CP      0x22
+134+  0110 28 04                                JR      Z,3F
+135+  0112 ED 79                                OUT     (C),A
+136+  0114 18 F3                                JR      2B
+137+  0116 23           3:                      INC     HL
+138+  0117 18 E1                                JR      1B
+139+  0119
+140+  0119 21 F7 02     FN_Port_Out_Err1:       LD      HL,MSG_INVALID_PORT
+141+  011C C3 A4 01                             JP      Print_String
+142+  011F 21 DD 02     FN_Port_Out_Err2:       LD      HL,MSG_ERROR
+143+  0122 C3 A4 01                             JP      Print_String
+144+  0125
+145+  0125 21 03 FF     FN_Port_In:             LD      HL,SYS_VARS_INPUT+1
+146+  0128 CD 27 02                             CALL    Parse_Hex16
+147+  012B 7E                                   LD      A,(HL)
+148+  012C FE 2C                                CP      ','
+149+  012E 20 0F                                JR      NZ,1F
+150+  0130 23                                   INC     HL
+151+  0131 D5                                   PUSH    DE
+152+  0132 CD 27 02                             CALL    Parse_Hex16
+153+  0135 C1                                   POP     BC
+154+  0136 78                                   LD      A,B
+155+  0137 B7                                   OR      A
+156+  0138 20 0B                                JR      NZ,2F
+157+  013A 7A                                   LD      A,D
+158+  013B B3                                   OR      E
+159+  013C C2 AD 01                             JP      NZ,Port_Dump
+160+  013F 21 DD 02     1:                      LD      HL,MSG_ERROR
+161+  0142 C3 A4 01                             JP      Print_String
+162+  0145 21 F7 02     2:                      LD      HL,MSG_INVALID_PORT
+163+  0148 C3 A4 01                             JP      Print_String
+164+  014B
+165+  014B CD 74 02     FN_Memory_Load:         CALL    Read_Char
+165+  014E 6F             LD L,A
+166+  014F CD 74 02                             CALL    Read_Char
+166+  0152 67             LD H,A
+167+  0153 CD 74 02                             CALL    Read_Char
+167+  0156 4F             LD C,A
+168+  0157 CD 74 02                             CALL    Read_Char
+168+  015A 47             LD B,A
+169+  015B CD 74 02     1:                      CALL    Read_Char
+170+  015E 77                                   LD      (HL),A
+171+  015F 23                                   INC     HL
+172+  0160 0B                                   DEC     BC
+173+  0161 78                                   LD      A,B
+174+  0162 B1                                   OR      C
+175+  0163 20 F6                                JR      NZ,1B
+176+  0165 C9                                   RET
+177+  0166
+178+  0166 21 03 FF     FN_Disassemble:         LD      HL,SYS_VARS_INPUT+1
+179+  0169 CD 27 02                             CALL    Parse_Hex16
+180+  016C 7E                                   LD      A,(HL)
+181+  016D FE 2C                                CP      ','
+182+  016F 20 11                                JR      NZ,2F
+183+  0171 23                                   INC     HL
+184+  0172 D5                                   PUSH    DE
+185+  0173 CD 27 02                             CALL    Parse_Hex16
+186+  0176 E1                                   POP     HL
+187+  0177 42                                   LD      B,D
+188+  0178 4B                                   LD      C,E
+189+  0179 DD 21 02 FF                          LD      IX,SYS_VARS_INPUT
+190+  017D 78                                   LD      A,B
+191+  017E B1                                   OR      C
+192+  017F C2 0C 05                             JP      NZ,Disassemble
+193+  0182 21 DD 02     2:                      LD      HL,MSG_ERROR
+194+  0185 C3 A4 01                             JP      Print_String
+195+  0188
+196+  0188 21 03 FF     FN_Memory_Dump:         LD      HL,SYS_VARS_INPUT+1
+197+  018B CD 27 02                             CALL    Parse_Hex16
+198+  018E 7E                                   LD      A,(HL)
+199+  018F FE 2C                                CP      ','
+200+  0191 20 0B                                JR      NZ,2F
+201+  0193 23                                   INC     HL
+202+  0194 D5                                   PUSH    DE
+203+  0195 CD 27 02                             CALL    Parse_Hex16
+204+  0198 E1                                   POP     HL
+205+  0199 7A                                   LD      A,D
+206+  019A B3                                   OR      E
+207+  019B C2 BE 01                             JP      NZ,Memory_Dump
+208+  019E 21 DD 02     2:                      LD      HL,MSG_ERROR
+209+  01A1 C3 A4 01                             JP      Print_String
+210+  01A4
+211+  01A4              ; Print a zero terminated string to the terminal port
+212+  01A4              ; HL: Address of the string
+213+  01A4              ;
+214+  01A4 7E           Print_String:           LD      A,(HL)
+215+  01A5 B7                                   OR      A
+216+  01A6 C8                                   RET     Z
+217+  01A7 CD 71 02                             CALL    Print_Char
+218+  01AA 23                                   INC     HL
+219+  01AB 18 F7                                JR      Print_String
+220+  01AD
+221+  01AD              ; Dump some ports out
+222+  01AD              ;  C: Port
+223+  01AD              ; DE: Number of bytes to read
+224+  01AD              ;
+225+  01AD ED 78        Port_Dump:              IN      A,(C)
+226+  01AF CD 54 02                             CALL    Print_Hex8
+227+  01B2 1B                                   DEC     DE
+228+  01B3 7A                                   LD      A,D
+229+  01B4 B3                                   OR      E
+230+  01B5 C8                                   RET     Z
+231+  01B6 CD 7A 02                             CALL    Read_Char_NB
+232+  01B9 FE 1B                                CP      0x1B
+233+  01BB C8                                   RET     Z
+234+  01BC 18 EF                                JR      Port_Dump
+235+  01BE
+236+  01BE              ; Dump some memory out
+237+  01BE              ; HL: Start of memory to dump
+238+  01BE              ; DE: Number of bytes to dump out
+239+  01BE              ;
+240+  01BE CD 4F 02     Memory_Dump:            CALL    Print_Hex16
+241+  01C1 3E 3A                                LD      A,':'
+242+  01C3 CD 71 02                             CALL    Print_Char
+243+  01C6 3E 20                                LD      A,' '
+244+  01C8 CD 71 02                             CALL    Print_Char
+245+  01CB 06 10                                LD      B,16
+246+  01CD DD 21 02 FF                          LD      IX,SYS_VARS_INPUT
+247+  01D1 DD 36 00 20                          LD      (IX+0),' '
+248+  01D5 7E           1:                      LD      A,(HL)
+249+  01D6 F5                                   PUSH    AF
+250+  01D7 FE 20                                CP      32
+251+  01D9 30 02                                JR      NC,2F
+252+  01DB 3E 2E                                LD      A,'.'
+253+  01DD DD 77 01     2:                      LD      (IX+1),A
+254+  01E0 DD 23                                INC     IX
+255+  01E2 F1                                   POP     AF
+256+  01E3 CD 54 02                             CALL    Print_Hex8
+257+  01E6 23                                   INC     HL
+258+  01E7 1B                                   DEC     DE
+259+  01E8 7A                                   LD      A,D
+260+  01E9 B3                                   OR      E
+261+  01EA 28 0E                                JR      Z,3F
+262+  01EC CD 7A 02                             CALL    Read_Char_NB
+263+  01EF FE 1B                                CP      0x1B
+264+  01F1 28 07                                JR      Z,3F
+265+  01F3 10 E0                                DJNZ    1B
+266+  01F5 CD 0B 02                             CALL    5F
+267+  01F8 18 C4                                JR      Memory_Dump
+268+  01FA
+269+  01FA 78           3:                      LD      A,B
+270+  01FB B7                                   OR      A
+271+  01FC 28 0D                                JR      Z,5F
+272+  01FE 05                                   DEC     B
+273+  01FF 28 0A                                JR      Z,5F
+274+  0201 3E 20                                LD      A,32
+275+  0203 CD 71 02     4:                      CALL    Print_Char
+276+  0206 CD 71 02                             CALL    Print_Char
+277+  0209 10 F8                                DJNZ    4B
+278+  020B
+279+  020B DD 36 01 0D  5:                      LD      (IX+1),0x0D
+280+  020F DD 36 02 0A                          LD      (IX+2),0x0A
+281+  0213 DD 36 03 00                          LD      (IX+3),0x00
+282+  0217 E5                                   PUSH    HL
+283+  0218 21 02 FF                             LD      HL,SYS_VARS_INPUT
+284+  021B CD A4 01                             CALL    Print_String
+285+  021E E1                                   POP     HL
+286+  021F C9                                   RET
+287+  0220
+288+  0220              ; Parse a hex string (up to 2 nibbles) to a binary
+289+  0220              ; HL: Address of hex (ASCII)
+290+  0220              ;  E: Output
+291+  0220              ;
+292+  0220 11 00 00     Parse_Hex8:             LD      DE,0
+293+  0223 06 02                                LD      B,2
+294+  0225 18 05                                JR      Parse_Hex
+295+  0227
+296+  0227              ; Parse a hex string (up to 4 nibbles) to a binary
+297+  0227              ; HL: Address of hex (ASCII)
+298+  0227              ; DE: Output
+299+  0227              ;
+300+  0227 11 00 00     Parse_Hex16:            LD      DE,0                    ; Clear the output
+301+  022A 06 04                                LD      B,4                     ; Maximum number of nibbles
+302+  022C 7E           Parse_Hex:              LD      A,(HL)                  ; Get the nibble
+303+  022D D6 30                                SUB     '0'                     ; Normalise to 0
+304+  022F D8                                   RET     C                       ; Return if < ASCII '0'
+305+  0230 FE 0A                                CP      10                      ; Check if >= 10
+306+  0232 38 05                                JR      C,1F
+307+  0234 D6 07                                SUB     7                       ; Adjust ASCII A-F to nibble
+308+  0236 FE 10                                CP      16                      ; Check for > F
+309+  0238 D0                                   RET     NC                      ; Return
+310+  0239 CB 23 CB 12  1:                      SLA     DE                      ; Shfit DE left 4 times
+311+  023D CB 23 CB 12                          SLA     DE
+312+  0241 CB 23 CB 12                          SLA     DE
+313+  0245 CB 23 CB 12                          SLA     DE
+314+  0249 B3                                   OR      E                       ; OR the nibble into E
+315+  024A 5F                                   LD      E,A
+316+  024B 23                                   INC     HL                      ; Increase pointer to next byte of input
+317+  024C 10 DE                                DJNZ    Parse_Hex               ; Loop around
+318+  024E C9                                   RET
+319+  024F
+320+  024F              ; Print a 16-bit HEX number
+321+  024F              ; HL: Number to print
+322+  024F              ;
+323+  024F 7C           Print_Hex16:            LD      A,H
+324+  0250 CD 54 02                             CALL    Print_Hex8
+325+  0253 7D                                   LD      A,L
+326+  0254
+327+  0254              ; Print an 8-bit HEX number
+328+  0254              ; A: Number to print
+329+  0254              ;
+330+  0254 4F           Print_Hex8:             LD      C,A
+331+  0255 1F                                   RRA
+332+  0256 1F                                   RRA
+333+  0257 1F                                   RRA
+334+  0258 1F                                   RRA
+335+  0259 CD 5D 02                             CALL    1F
+336+  025C 79                                   LD      A,C
+337+  025D E6 0F        1:                      AND     0x0F
+338+  025F C6 90                                ADD     A,0x90
+339+  0261 27                                   DAA
+340+  0262 CE 40                                ADC     A,0x40
+341+  0264 27                                   DAA
+342+  0265 18 0A                                JR      Print_Char
+343+  0267
+344+  0267              ; Print CR/LF
+345+  0267              ;
+346+  0267 3E 0D        Print_CR:               LD      A,0x0D
+347+  0269 CD 71 02                             CALL    Print_Char
+348+  026C 3E 0A                                LD      A,0x0A
+349+  026E C3 71 02                             JP      Print_Char
+350+  0271
+351+  0271              ; Print a single character
+352+  0271              ; A: ASCII character
+353+  0271              ;
+354+  0271 C3 8F 0D     Print_Char:             JP      UART_TX
+355+  0274
+356+  0274              ; Read a character - waits for input
+357+  0274              ; NB is the non-blocking variant
+358+  0274              ;  A: ASCII character read
+359+  0274              ;  F: NC if no character read (non-blocking)
+360+  0274              ;  F:  C if character read (non-blocking)
+361+  0274              ;
+362+  0274 CD AD 0D     Read_Char:              CALL    UART_RX
+363+  0277 30 FB                                JR      NC,Read_Char
+364+  0279 C9                                   RET
+365+  027A C3 AD 0D     Read_Char_NB:           JP      UART_RX
+366+  027D
+367+  027D              ;Print_Char_STM32:      OUT     (PORT_STM_IO),A
+368+  027D              ;                       RET
+369+  027D              ;Read_Char_STM32:       CALL    Read_Char_NB_STM32
+370+  027D              ;                       JR      NC,Read_Char_STM32
+371+  027D              ;                       RET
+372+  027D              ;Read_Char_NB_STM32:    IN      A,(PORT_STM_FLAGS)
+373+  027D              ;                       AND     0x01
+374+  027D              ;                       RET     Z
+375+  027D              ;                       IN      A,(PORT_STM_IO)
+376+  027D              ;                       OR      A
+377+  027D              ;                       RET     Z
+378+  027D              ;                       SCF
+379+  027D              ;                       RET
+380+  027D
+381+  027D              ;******************************************************
+382+  027D              ;This routine prints help
+383+  027D              ;by pdsilva
+384+  027D
+385+  027D              Print_Help:
+386+  027D 21 1D 03     						LD      HL,MSG000
+387+  0280 CD A4 01                             CALL    Print_String
+388+  0283 21 26 03                             LD      HL,MSG001
+389+  0286 CD A4 01                             CALL    Print_String
+390+  0289 21 77 03                             LD      HL,MSG002
+391+  028C CD A4 01                             CALL    Print_String
+392+  028F 21 9C 03                             LD      HL,MSG003
+393+  0292 CD A4 01                             CALL    Print_String
+394+  0295 21 D1 03                             LD      HL,MSG004
+395+  0298 CD A4 01                             CALL    Print_String
+396+  029B 21 08 04                             LD      HL,MSG005
+397+  029E CD A4 01                             CALL    Print_String
+398+  02A1 21 66 04                             LD      HL,MSG006
+399+  02A4 CD A4 01                             CALL    Print_String
+400+  02A7 21 A8 04                             LD      HL,MSG007
+401+  02AA CD A4 01                             CALL    Print_String
+402+  02AD 21 ED 04                             LD      HL,MSG008
+403+  02B0 CD A4 01                             CALL    Print_String
+404+  02B3 C9                                   RET
+405+  02B4
+406+  02B4              ;
+407+  02B4              ; Messages
+408+  02B4              ;
+409+  02B4 42 53 58 20  MSG_STARTUP:            DZ "BSX Version 0.3.1\n\r"
+409+  02B8 56 65 72 73
+409+  02BC 69 6F 6E 20
+409+  02C0 30 2E 33 2E
+409+  02C4 31 0A 0D 00
+410+  02C8 52 65 61 64  MSG_READY:              DZ "Ready:> "
+410+  02CC 79 3A 3E 20
+410+  02D0 00
+411+  02D1 4D 65 6D 20  MSG_BADRAM:             DZ "Mem Fault\n\r"
+411+  02D5 46 61 75 6C
+411+  02D9 74 0A 0D 00
+412+  02DD 45 72 72 6F  MSG_ERROR:              DZ "Error\n\r"
+412+  02E1 72 0A 0D 00
+413+  02E5 49 6E 76 61  MSG_INVALID_CMD:        DZ "Invalid Command\n\r"
+413+  02E9 6C 69 64 20
+413+  02ED 43 6F 6D 6D
+413+  02F1 61 6E 64 0A
+413+  02F5 0D 00
+414+  02F7 49 6E 76 61  MSG_INVALID_PORT:       DZ "Invalid Port #\n\r"
+414+  02FB 6C 69 64 20
+414+  02FF 50 6F 72 74
+414+  0303 20 23 0A 0D
+414+  0307 00
+415+  0308 56 61 6C 75  MSG_OUT_OF_RANGE:       DZ "Value out of range\n\r"
+415+  030C 65 20 6F 75
+415+  0310 74 20 6F 66
+415+  0314 20 72 61 6E
+415+  0318 67 65 0A 0D
+415+  031C 00
+416+  031D 48 65 6C 70  MSG000: DZ "Help  \n\r"
+416+  0321 20 20 0A 0D
+416+  0325 00
+417+  0326 20 20 2D 20  MSG001: DZ "  - Mnnnn,llll - Memory Hex Dump: Output llll bytes from memory location nnnn \n\r"
+417+  032A 4D 6E 6E 6E
+417+  032E 6E 2C 6C 6C
+417+  0332 6C 6C 20 2D
+417+  0336 20 4D 65 6D
+417+  033A 6F 72 79 20
+417+  033E 48 65 78 20
+417+  0342 44 75 6D 70
+417+  0346 3A 20 4F 75
+417+  034A 74 70 75 74
+417+  034E 20 6C 6C 6C
+417+  0352 6C 20 62 79
+417+  0356 74 65 73 20
+417+  035A 66 72 6F 6D
+417+  035E 20 6D 65 6D
+417+  0362 6F 72 79 20
+417+  0366 6C 6F 63 61
+417+  036A 74 69 6F 6E
+417+  036E 20 6E 6E 6E
+417+  0372 6E 20 0A 0D
+417+  0376 00
+418+  0377 20 20 2D 20  MSG002: DZ "  - Jnnnn - Jump to location nnnn \n\r"
+418+  037B 4A 6E 6E 6E
+418+  037F 6E 20 2D 20
+418+  0383 4A 75 6D 70
+418+  0387 20 74 6F 20
+418+  038B 6C 6F 63 61
+418+  038F 74 69 6F 6E
+418+  0393 20 6E 6E 6E
+418+  0397 6E 20 0A 0D
+418+  039B 00
+419+  039C 20 20 2D 20  MSG003: DZ "  - Onn,vv - O(utput) the value vv on Z80 port nn \n\r"
+419+  03A0 4F 6E 6E 2C
+419+  03A4 76 76 20 2D
+419+  03A8 20 4F 28 75
+419+  03AC 74 70 75 74
+419+  03B0 29 20 74 68
+419+  03B4 65 20 76 61
+419+  03B8 6C 75 65 20
+419+  03BC 76 76 20 6F
+419+  03C0 6E 20 5A 38
+419+  03C4 30 20 70 6F
+419+  03C8 72 74 20 6E
+419+  03CC 6E 20 0A 0D
+419+  03D0 00
+420+  03D1 20 20 2D 20  MSG004: DZ "  - Inn,llll - I(nput) llll values from Z80 port nn \n\r"
+420+  03D5 49 6E 6E 2C
+420+  03D9 6C 6C 6C 6C
+420+  03DD 20 2D 20 49
+420+  03E1 28 6E 70 75
+420+  03E5 74 29 20 6C
+420+  03E9 6C 6C 6C 20
+420+  03ED 76 61 6C 75
+420+  03F1 65 73 20 66
+420+  03F5 72 6F 6D 20
+420+  03F9 5A 38 30 20
+420+  03FD 70 6F 72 74
+420+  0401 20 6E 6E 20
+420+  0405 0A 0D 00
+421+  0408 20 20 2D 20  MSG005: DZ "  - L - Put the monitor into Load mode; it will wait for a binary stream of data on port 0 \n\r"
+421+  040C 4C 20 2D 20
+421+  0410 50 75 74 20
+421+  0414 74 68 65 20
+421+  0418 6D 6F 6E 69
+421+  041C 74 6F 72 20
+421+  0420 69 6E 74 6F
+421+  0424 20 4C 6F 61
+421+  0428 64 20 6D 6F
+421+  042C 64 65 3B 20
+421+  0430 69 74 20 77
+421+  0434 69 6C 6C 20
+421+  0438 77 61 69 74
+421+  043C 20 66 6F 72
+421+  0440 20 61 20 62
+421+  0444 69 6E 61 72
+421+  0448 79 20 73 74
+421+  044C 72 65 61 6D
+421+  0450 20 6F 66 20
+421+  0454 64 61 74 61
+421+  0458 20 6F 6E 20
+421+  045C 70 6F 72 74
+421+  0460 20 30 20 0A
+421+  0464 0D 00
+422+  0466 20 20 2D 20  MSG006: DZ "  - B - Jump to address 0x4000 (where BBC Basic can be loaded) \n\r"
+422+  046A 42 20 2D 20
+422+  046E 4A 75 6D 70
+422+  0472 20 74 6F 20
+422+  0476 61 64 64 72
+422+  047A 65 73 73 20
+422+  047E 30 78 34 30
+422+  0482 30 30 20 28
+422+  0486 77 68 65 72
+422+  048A 65 20 42 42
+422+  048E 43 20 42 61
+422+  0492 73 69 63 20
+422+  0496 63 61 6E 20
+422+  049A 62 65 20 6C
+422+  049E 6F 61 64 65
+422+  04A2 64 29 20 0A
+422+  04A6 0D 00
+423+  04A8 20 20 2D 20  MSG007: DZ "  - Dnnnn,llll - Disassemble llll bytes from memory location nnnn \n\r"
+423+  04AC 44 6E 6E 6E
+423+  04B0 6E 2C 6C 6C
+423+  04B4 6C 6C 20 2D
+423+  04B8 20 44 69 73
+423+  04BC 61 73 73 65
+423+  04C0 6D 62 6C 65
+423+  04C4 20 6C 6C 6C
+423+  04C8 6C 20 62 79
+423+  04CC 74 65 73 20
+423+  04D0 66 72 6F 6D
+423+  04D4 20 6D 65 6D
+423+  04D8 6F 72 79 20
+423+  04DC 6C 6F 63 61
+423+  04E0 74 69 6F 6E
+423+  04E4 20 6E 6E 6E
+423+  04E8 6E 20 0A 0D
+423+  04EC 00
+424+  04ED 20 20 2D 20  MSG008: DZ "  - ? or H - Show this help \n\r"
+424+  04F1 3F 20 6F 72
+424+  04F5 20 48 20 2D
+424+  04F9 20 53 68 6F
+424+  04FD 77 20 74 68
+424+  0501 69 73 20 68
+424+  0505 65 6C 70 20
+424+  0509 0A 0D 00
+425+  050C
+426+  050C
+427+  050C
+# file closed: monitor.z80
+ 34   050C              			include "disassembler.z80"
+# file opened: disassembler.z80
+  1+  050C              ;
+  2+  050C              ; Title:	Z80 Disassembler for BSX
+  3+  050C              ; Author:	Dean Belfield
+  4+  050C              ; Created:	03/06/2020
+  5+  050C              ; Last Updated:	05/10/2020
+  6+  050C              ;
+  7+  050C              ; Based upon information in http://www.z80.info/decoding.htm
+  8+  050C              ;
+  9+  050C              ; Modinfo:
+ 10+  050C              ; 06/06/2020:	Output formatting tweaks
+ 11+  050C              ; 05/10/2020:	Added UART support
+ 12+  050C
+ 13+  050C              ;
+ 14+  050C              ; Macros
+ 15+  050C              ;
+ 16+  050C
+ 17+  050C              ; Macro to write a single char to the output buffer
+ 18+  050C              ;
+ 19+  050C              CHAR:			MACRO	value
+ 20+  050C ~            			LD	(IY+0), value
+ 21+  050C ~            			INC	IY
+ 22+  050C              			ENDM
+ 23+  050C
+ 24+  050C              ; Macro to write the zero-delimited text to the output buffer
+ 25+  050C              ;
+ 26+  050C              TEXT:			MACRO 	text
+ 27+  050C ~            			CALL	Copy_String
+ 28+  050C ~            			DZ	text
+ 29+  050C              			ENDM
+ 30+  050C
+ 31+  050C              ; Macro to write the zero delimited text to the output buffer if A != value
+ 32+  050C              ;
+ 33+  050C              TEXTIF:			MACRO	value, text
+ 34+  050C ~            			CP	value
+ 35+  050C ~            			JR	NZ, .S1
+ 36+  050C ~            			CALL	Copy_String
+ 37+  050C ~            			DZ	text
+ 38+  050C ~            			RET
+ 39+  050C ~            .S1:			;
+ 40+  050C              			ENDM
+ 41+  050C
+ 42+  050C              ; Macro to index string from table[value]
+ 43+  050C              ;
+ 44+  050C              TEXTIN:			MACRO	table, value
+ 45+  050C ~            			LD 	A, value
+ 46+  050C ~            			TEXTINM	table, Copy_String_Index
+ 47+  050C              			ENDM
+ 48+  050C
+ 49+  050C              ; Macro to index string from table[A]
+ 50+  050C              ;
+ 51+  050C              TEXTINA:		MACRO	table
+ 52+  050C ~            			TEXTINM	table, Copy_String_Index
+ 53+  050C              			ENDM
+ 54+  050C
+ 55+  050C              ; Same as TEXTIN, but takes the shift opcodes DD and FD into account
+ 56+  050C              ; Used for tables DTable_R, DTable_RP1 and DTable_RP2
+ 57+  050C              ;
+ 58+  050C              TEXTINS:		MACRO	table, value
+ 59+  050C ~            			LD 	A, value
+ 60+  050C ~            			TEXTINM	table, Copy_String_Index_S
+ 61+  050C              			ENDM
+ 62+  050C
+ 63+  050C              ; Same as TEXTINA, but takes the shift opcodes DD and FD into account
+ 64+  050C              ; Used for tables DTable_R, DTable_RP1 and DTable_RP2
+ 65+  050C              ;
+ 66+  050C              TEXTINSA:		MACRO	table
+ 67+  050C ~            			TEXTINM	table, Copy_String_Index_S
+ 68+  050C              			ENDM
+ 69+  050C
+ 70+  050C              ; Macro called by all TEXTIN macros
+ 71+  050C              ;
+ 72+  050C              TEXTINM:		MACRO	table, function
+ 73+  050C ~            			EXX
+ 74+  050C ~            			LD	HL, table
+ 75+  050C ~            			CALL	function
+ 76+  050C ~            			EXX
+ 77+  050C              			ENDM
+ 78+  050C
+ 79+  050C              ; Add A to HL (signed)
+ 80+  050C              ;
+ 81+  050C              ADD_HL_A_SIGNED:	MACRO
+ 82+  050C ~            			OR A
+ 83+  050C ~            			JP P, .S1
+ 84+  050C ~            			DEC H
+ 85+  050C ~            .S1			ADD A, L
+ 86+  050C ~            			LD L, A
+ 87+  050C ~            			ADC A, H
+ 88+  050C ~            			SUB L
+ 89+  050C ~            			LD H, A
+ 90+  050C              			ENDM
+ 91+  050C
+ 92+  050C              ; Add A to BC (signed)
+ 93+  050C              ;
+ 94+  050C              ADD_BC_A_SIGNED:	MACRO
+ 95+  050C ~            			OR A
+ 96+  050C ~            			JP P, .S1
+ 97+  050C ~            			DEC B
+ 98+  050C ~            .S1			ADD A, C
+ 99+  050C ~            			LD C, A
+100+  050C ~            			ADC A, B
+101+  050C ~            			SUB C
+102+  050C ~            			LD B, A
+103+  050C              			ENDM
+104+  050C
+105+  050C              ; HL: Start address of memory to disassemble
+106+  050C              ; IX: Address of buffer
+107+  050C              ; 	+&00: Address (2 bytes)
+108+  050C              ;	+&02: Opcode byte count (1 byte)
+109+  050C              ;	+&03: Temporary Storage (4 bytes)
+110+  050C              ;	+&07: Shift byte (&00, &CB, &DD, &ED, &FD)
+111+  050C              ;	+&08: Disassembly text
+112+  050C              ; BC: Number of bytes to disassemble
+113+  050C              ;
+114+  050C DD 7D        Disassemble:		LD 	A,IXL			; Point IY to the disassembly text address
+115+  050E C6 08        			ADD	A,8
+116+  0510 FD 6F        			LD	IYL,A
+117+  0512 DD 7C        			LD	A,IXH
+118+  0514 CE 00        			ADC	A,0
+119+  0516 FD 67        			LD	IYH,A
+120+  0518
+121+  0518 C5           1:			PUSH 	BC			; Stack the loop counter
+122+  0519 7D           			LD	A,L
+122+  051A DD 77 00       LD (IX+0),A	; Store the address
+123+  051D 7C           			LD	A,H
+123+  051E DD 77 01       LD (IX+1),A
+124+  0521 FD E5        			PUSH	IY 			; Stack the string buffer address
+125+  0523 DD 36 02 00  			LD	(IX+2),0		; Clear the byte count
+126+  0527 DD 36 07 00  			LD	(IX+7),0		; Clear the shift byte
+127+  052B CD 9F 05     			CALL	Disassemble_Op		; Disassemble the OP code
+128+  052E DD 7E 07     			LD	A,(IX+7)		; Is it a shift byte?
+129+  0531 B7           			OR	A
+130+  0532 C4 9F 05     			CALL	NZ,Disassemble_Op	; If not zero, then do it again!
+131+  0535 FD 36 00 00  			LD	(IY+0),0		; Terminate the string
+132+  0539 FD E1        			POP 	IY
+133+  053B E5           			PUSH	HL 			; Print the string to the console
+134+  053C DD 7E 00     			LD	A,(IX+0)
+134+  053F 6F             LD L,A	; First the address
+135+  0540 DD 7E 01     			LD	A,(IX+1)
+135+  0543 67             LD H,A
+136+  0544 CD 4F 02     			CALL 	Print_Hex16
+137+  0547 3E 3A        			LD	A,":"
+137+  0549 CD 71 02       CALL Print_Char
+138+  054C 3E 20        			LD	A," "
+138+  054E CD 71 02       CALL Print_Char
+139+  0551 CD 7C 05     			CALL	Print_Opcodes
+140+  0554 FD 7D        			LD	A,IYL
+140+  0556 6F             LD L,A 		; And finally the disassembly
+141+  0557 FD 7C        			LD	A,IYH
+141+  0559 67             LD H,A
+142+  055A CD A4 01     			CALL 	Print_String
+143+  055D CD 67 02     			CALL	Print_CR
+144+  0560 E1           			POP 	HL
+145+  0561 C1           			POP 	BC			; Pop the line loop counter
+146+  0562 CD 7A 02     			CALL 	Read_Char_NB		; Check for ESC
+147+  0565 FE 1B        			CP 	0x1B
+148+  0567 C8           			RET	Z
+149+  0568 DD 7E 02     			LD	A,(IX+2)		; Decrement number of bytes
+150+  056B ED 44        			NEG
+151+  056D              			ADD_BC_A_SIGNED
+151+  056D B7          >			OR A
+151+  056E F2 72 05    >			JP P, .S1
+151+  0571 05          >			DEC B
+151+  0572 81          >.S1			ADD A, C
+151+  0573 4F          >			LD C, A
+151+  0574 88          >			ADC A, B
+151+  0575 91          >			SUB C
+151+  0576 47          >			LD B, A
+152+  0577 CB 78        			BIT	7,B
+153+  0579 28 9D        			JR	Z, 1B			; Loop
+154+  057B C9           			RET
+155+  057C
+156+  057C              ; Print the opcodes out to the terminal
+157+  057C              ; HL: Start of memory to dump
+158+  057C              ;
+159+  057C DD 46 02     Print_Opcodes:		LD	B,(IX+2)		; Number of bytes in this instruction
+160+  057F 7E           1:			LD	A,(HL)			; Fetch the byte from memory
+161+  0580 CD 54 02     			CALL	Print_Hex8		; Output an 8 digit hex code
+162+  0583 3E 20        			LD	A," "			; Pad with a space
+163+  0585 CD 71 02     			CALL	Print_Char
+164+  0588 23           			INC	HL
+165+  0589 10 F4        			DJNZ	1B
+166+  058B 3E 04        			LD	A,4			; Need to pad this out
+167+  058D DD 96 02     			SUB	(IX+2)			; Work out how many spaces to pad out with 3*(4-#opcodes)
+168+  0590 D8           			RET	C 			; If no padding required, then exit
+169+  0591 C8           			RET	Z
+170+  0592 47           			LD	B,A 			; Multiply by 3
+171+  0593 CB 27        			SLA	A
+172+  0595 80           			ADD	A,B
+173+  0596 47           			LD	B,A			; Store in loop counter, and pad
+174+  0597 3E 20        2:			LD	A," "
+174+  0599 CD 71 02       CALL Print_Char
+175+  059C 10 F9        			DJNZ 	2B
+176+  059E C9           			RET
+177+  059F
+178+  059F              ; Disassemble a single op code
+179+  059F              ; HL: Current memory address
+180+  059F              ; IY: Buffer to store string in
+181+  059F              ; Returns:
+182+  059F              ;  A: 0 or CB, DD, ED, FD prefix shift (TODO)
+183+  059F              ;
+184+  059F 46           Disassemble_Op:		LD	B,(HL)			; Get the opcode byte to decode
+185+  05A0 23           			INC	HL 			; Skip to next memory address
+186+  05A1 DD 34 02     			INC	(IX+2)			; Increment the opcode byte count
+187+  05A4
+188+  05A4 78           			LD 	A,B
+189+  05A5 E6 07        			AND	0b00000111
+190+  05A7 57           			LD	D,A			; D = Z
+191+  05A8 78           			LD 	A,B
+192+  05A9 E6 38        			AND	0b00111000
+193+  05AB CB 3F        			SRL	A
+194+  05AD CB 3F        			SRL	A
+195+  05AF CB 3F        			SRL	A
+196+  05B1 5F           			LD	E,A			; E = Y
+197+  05B2 CB 3F        			SRL	A
+198+  05B4 4F           			LD	C,A			; C = P
+199+  05B5
+200+  05B5 DD 7E 07     			LD	A,(IX+7)		; Check the shift byte
+201+  05B8 FE CB        			CP	0xCB
+202+  05BA CA 55 09     			JP 	Z, Disassemble_Op_CB
+203+  05BD FE ED        			CP	0xED
+204+  05BF CA D7 09     			JP	Z, Disassemble_Op_ED
+205+  05C2
+206+  05C2 78           			LD 	A,B
+207+  05C3 E6 C0        			AND	0b11000000		; Get the X value
+208+  05C5 FE C0        			CP	0b11000000
+208+  05C7 CA CE 07       JP	Z, Disassemble_Op_X3
+209+  05CA FE 80        			CP	0b10000000
+209+  05CC CA BB 07       JP 	Z, Disassemble_Op_X2
+210+  05CF FE 40        			CP 	0b01000000
+210+  05D1 CA 88 07       JP	Z, Disassemble_Op_X1
+211+  05D4
+212+  05D4 7A           Disassemble_Op_X0:	LD 	A,D			; Get Z
+213+  05D5 FE 07        			CP	7
+213+  05D7 CA 7E 07       JP	Z, Disassemble_Op_X0Z7
+214+  05DA FE 06        			CP	6
+214+  05DC CA 66 07       JP	Z, Disassemble_Op_X0Z6
+215+  05DF FE 05        			CP	5
+215+  05E1 CA 54 07       JP	Z, Disassemble_Op_X0Z5
+216+  05E4 FE 04        			CP 	4
+216+  05E6 CA 42 07       JP	Z, Disassemble_Op_X0Z4
+217+  05E9 FE 03        			CP	3
+217+  05EB CA 1A 07       JP	Z, Disassemble_Op_X0Z3
+218+  05EE FE 02        			CP	2
+218+  05F0 CA 80 06       JP	Z, Disassemble_Op_X0Z2
+219+  05F3 FE 01        			CP	1
+219+  05F5 CA 4F 06       JP	Z, Disassemble_Op_X0Z1
+220+  05F8
+221+  05F8 7B           Disassemble_Op_X0Z0:	LD 	A,E			; Get Y
+222+  05F9              			TEXTIF	0, "NOP"
+222+  05F9 FE 00       >			CP	0
+222+  05FB 20 08       >			JR	NZ, .S1
+222+  05FD CD 06 0B    >			CALL	Copy_String
+222+  0600 4E 4F 50 00 >			DZ	"NOP"
+222+  0604 C9          >			RET
+222+  0605             >.S1:			;
+223+  0605              			TEXTIF	1, "EX AF,AF'"
+223+  0605 FE 01       >			CP	1
+223+  0607 20 0E       >			JR	NZ, .S1
+223+  0609 CD 06 0B    >			CALL	Copy_String
+223+  060C 45 58 20 41 >			DZ	"EX AF,AF'"
+223+  0610 46 2C 41 46 >
+223+  0614 27 00       >
+223+  0616 C9          >			RET
+223+  0617             >.S1:			;
+224+  0617              			TEXTIF	2, "DJNZ ?R"
+224+  0617 FE 02       >			CP	2
+224+  0619 20 0C       >			JR	NZ, .S1
+224+  061B CD 06 0B    >			CALL	Copy_String
+224+  061E 44 4A 4E 5A >			DZ	"DJNZ ?R"
+224+  0622 20 3F 52 00 >
+224+  0626 C9          >			RET
+224+  0627             >.S1:			;
+225+  0627              			TEXTIF	3, "JR ?R"
+225+  0627 FE 03       >			CP	3
+225+  0629 20 0A       >			JR	NZ, .S1
+225+  062B CD 06 0B    >			CALL	Copy_String
+225+  062E 4A 52 20 3F >			DZ	"JR ?R"
+225+  0632 52 00       >
+225+  0634 C9          >			RET
+225+  0635             >.S1:			;
+226+  0635              			TEXT	"JR "
+226+  0635 CD 06 0B    >			CALL	Copy_String
+226+  0638 4A 52 20 00 >			DZ	"JR "
+227+  063C 7B           			LD	A,E
+228+  063D D6 04        			SUB	4
+229+  063F              			TEXTINA	DTable_CC
+229+  063F             >			TEXTINM	DTable_CC, Copy_String_Index
+229+  063F D9          >			EXX
+229+  0640 21 34 0C    >			LD	HL, DTable_CC
+229+  0643 CD 27 0B    >			CALL	Copy_String_Index
+229+  0646 D9          >			EXX
+230+  0647              			TEXT	",?R"
+230+  0647 CD 06 0B    >			CALL	Copy_String
+230+  064A 2C 3F 52 00 >			DZ	",?R"
+231+  064E C9           			RET
+232+  064F
+233+  064F CB 58        Disassemble_Op_X0Z1:	BIT    	3,B
+234+  0651 20 18        			JR	NZ, 1F
+235+  0653              			TEXT	"LD "			; Q = 0
+235+  0653 CD 06 0B    >			CALL	Copy_String
+235+  0656 4C 44 20 00 >			DZ	"LD "
+236+  065A              			TEXTINS	DTable_RP1, C
+236+  065A 79          >			LD 	A, C
+236+  065B             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+236+  065B D9          >			EXX
+236+  065C 21 07 0C    >			LD	HL, DTable_RP1
+236+  065F CD 0E 0B    >			CALL	Copy_String_Index_S
+236+  0662 D9          >			EXX
+237+  0663              			TEXT	",?W"
+237+  0663 CD 06 0B    >			CALL	Copy_String
+237+  0666 2C 3F 57 00 >			DZ	",?W"
+238+  066A C9           			RET
+239+  066B              1:			TEXT	"ADD HL,"		; Q = 1
+239+  066B CD 06 0B    >			CALL	Copy_String
+239+  066E 41 44 44 20 >			DZ	"ADD HL,"
+239+  0672 48 4C 2C 00 >
+240+  0676              			TEXTINS	DTable_RP1, C
+240+  0676 79          >			LD 	A, C
+240+  0677             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+240+  0677 D9          >			EXX
+240+  0678 21 07 0C    >			LD	HL, DTable_RP1
+240+  067B CD 0E 0B    >			CALL	Copy_String_Index_S
+240+  067E D9          >			EXX
+241+  067F C9           			RET
+242+  0680
+243+  0680 CB 58        Disassemble_Op_X0Z2:	BIT	3,B
+244+  0682 20 4B        			JR	NZ, 1F
+245+  0684 79           			LD	A,C			; Q = 0
+246+  0685              			TEXTIF	0, "LD (BC),A"
+246+  0685 FE 00       >			CP	0
+246+  0687 20 0E       >			JR	NZ, .S1
+246+  0689 CD 06 0B    >			CALL	Copy_String
+246+  068C 4C 44 20 28 >			DZ	"LD (BC),A"
+246+  0690 42 43 29 2C >
+246+  0694 41 00       >
+246+  0696 C9          >			RET
+246+  0697             >.S1:			;
+247+  0697              			TEXTIF	1, "LD (DE),A"
+247+  0697 FE 01       >			CP	1
+247+  0699 20 0E       >			JR	NZ, .S1
+247+  069B CD 06 0B    >			CALL	Copy_String
+247+  069E 4C 44 20 28 >			DZ	"LD (DE),A"
+247+  06A2 44 45 29 2C >
+247+  06A6 41 00       >
+247+  06A8 C9          >			RET
+247+  06A9             >.S1:			;
+248+  06A9              			TEXTIF	2, "LD (?W),HL"
+248+  06A9 FE 02       >			CP	2
+248+  06AB 20 0F       >			JR	NZ, .S1
+248+  06AD CD 06 0B    >			CALL	Copy_String
+248+  06B0 4C 44 20 28 >			DZ	"LD (?W),HL"
+248+  06B4 3F 57 29 2C >
+248+  06B8 48 4C 00    >
+248+  06BB C9          >			RET
+248+  06BC             >.S1:			;
+249+  06BC              			TEXTIF	3, "LD (?W),A"
+249+  06BC FE 03       >			CP	3
+249+  06BE 20 0E       >			JR	NZ, .S1
+249+  06C0 CD 06 0B    >			CALL	Copy_String
+249+  06C3 4C 44 20 28 >			DZ	"LD (?W),A"
+249+  06C7 3F 57 29 2C >
+249+  06CB 41 00       >
+249+  06CD C9          >			RET
+249+  06CE             >.S1:			;
+250+  06CE C9           			RET
+251+  06CF 79           1:			LD	A,C 			; Q = 1
+252+  06D0              			TEXTIF	0, "LD A,(BC)"
+252+  06D0 FE 00       >			CP	0
+252+  06D2 20 0E       >			JR	NZ, .S1
+252+  06D4 CD 06 0B    >			CALL	Copy_String
+252+  06D7 4C 44 20 41 >			DZ	"LD A,(BC)"
+252+  06DB 2C 28 42 43 >
+252+  06DF 29 00       >
+252+  06E1 C9          >			RET
+252+  06E2             >.S1:			;
+253+  06E2              			TEXTIF	1, "LD A,(DE)"
+253+  06E2 FE 01       >			CP	1
+253+  06E4 20 0E       >			JR	NZ, .S1
+253+  06E6 CD 06 0B    >			CALL	Copy_String
+253+  06E9 4C 44 20 41 >			DZ	"LD A,(DE)"
+253+  06ED 2C 28 44 45 >
+253+  06F1 29 00       >
+253+  06F3 C9          >			RET
+253+  06F4             >.S1:			;
+254+  06F4              			TEXTIF	2, "LD HL,(?W)"
+254+  06F4 FE 02       >			CP	2
+254+  06F6 20 0F       >			JR	NZ, .S1
+254+  06F8 CD 06 0B    >			CALL	Copy_String
+254+  06FB 4C 44 20 48 >			DZ	"LD HL,(?W)"
+254+  06FF 4C 2C 28 3F >
+254+  0703 57 29 00    >
+254+  0706 C9          >			RET
+254+  0707             >.S1:			;
+255+  0707              			TEXTIF	3, "LD A,(?W)"
+255+  0707 FE 03       >			CP	3
+255+  0709 20 0E       >			JR	NZ, .S1
+255+  070B CD 06 0B    >			CALL	Copy_String
+255+  070E 4C 44 20 41 >			DZ	"LD A,(?W)"
+255+  0712 2C 28 3F 57 >
+255+  0716 29 00       >
+255+  0718 C9          >			RET
+255+  0719             >.S1:			;
+256+  0719 C9           			RET
+257+  071A
+258+  071A CB 58        Disassemble_Op_X0Z3:	BIT	3,B
+259+  071C 20 12        			JR 	NZ,1F
+260+  071E              			TEXT	"INC "			; Q = 0
+260+  071E CD 06 0B    >			CALL	Copy_String
+260+  0721 49 4E 43 20 >			DZ	"INC "
+260+  0725 00          >
+261+  0726              			TEXTINS	DTable_RP1, C
+261+  0726 79          >			LD 	A, C
+261+  0727             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+261+  0727 D9          >			EXX
+261+  0728 21 07 0C    >			LD	HL, DTable_RP1
+261+  072B CD 0E 0B    >			CALL	Copy_String_Index_S
+261+  072E D9          >			EXX
+262+  072F C9           			RET
+263+  0730              1:			TEXT	"DEC "			; Q = 1
+263+  0730 CD 06 0B    >			CALL	Copy_String
+263+  0733 44 45 43 20 >			DZ	"DEC "
+263+  0737 00          >
+264+  0738              			TEXTINS	DTable_RP1, C
+264+  0738 79          >			LD 	A, C
+264+  0739             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+264+  0739 D9          >			EXX
+264+  073A 21 07 0C    >			LD	HL, DTable_RP1
+264+  073D CD 0E 0B    >			CALL	Copy_String_Index_S
+264+  0740 D9          >			EXX
+265+  0741 C9           			RET
+266+  0742
+267+  0742              Disassemble_Op_X0Z4:	TEXT	"INC "
+267+  0742 CD 06 0B    >			CALL	Copy_String
+267+  0745 49 4E 43 20 >			DZ	"INC "
+267+  0749 00          >
+268+  074A              			TEXTINS	DTable_R, E
+268+  074A 7B          >			LD 	A, E
+268+  074B             >			TEXTINM	DTable_R, Copy_String_Index_S
+268+  074B D9          >			EXX
+268+  074C 21 BC 0B    >			LD	HL, DTable_R
+268+  074F CD 0E 0B    >			CALL	Copy_String_Index_S
+268+  0752 D9          >			EXX
+269+  0753 C9           			RET
+270+  0754
+271+  0754              Disassemble_Op_X0Z5:	TEXT	"DEC "
+271+  0754 CD 06 0B    >			CALL	Copy_String
+271+  0757 44 45 43 20 >			DZ	"DEC "
+271+  075B 00          >
+272+  075C              			TEXTINS	DTable_R, E
+272+  075C 7B          >			LD 	A, E
+272+  075D             >			TEXTINM	DTable_R, Copy_String_Index_S
+272+  075D D9          >			EXX
+272+  075E 21 BC 0B    >			LD	HL, DTable_R
+272+  0761 CD 0E 0B    >			CALL	Copy_String_Index_S
+272+  0764 D9          >			EXX
+273+  0765 C9           			RET
+274+  0766
+275+  0766              Disassemble_Op_X0Z6:	TEXT	"LD "
+275+  0766 CD 06 0B    >			CALL	Copy_String
+275+  0769 4C 44 20 00 >			DZ	"LD "
+276+  076D              			TEXTINS	DTable_R, E
+276+  076D 7B          >			LD 	A, E
+276+  076E             >			TEXTINM	DTable_R, Copy_String_Index_S
+276+  076E D9          >			EXX
+276+  076F 21 BC 0B    >			LD	HL, DTable_R
+276+  0772 CD 0E 0B    >			CALL	Copy_String_Index_S
+276+  0775 D9          >			EXX
+277+  0776              			TEXT	",?B"
+277+  0776 CD 06 0B    >			CALL	Copy_String
+277+  0779 2C 3F 42 00 >			DZ	",?B"
+278+  077D C9           			RET
+279+  077E
+280+  077E              Disassemble_Op_X0Z7:	TEXTIN	DTable_O1, E
+280+  077E 7B          >			LD 	A, E
+280+  077F             >			TEXTINM	DTable_O1, Copy_String_Index
+280+  077F D9          >			EXX
+280+  0780 21 1E 0D    >			LD	HL, DTable_O1
+280+  0783 CD 27 0B    >			CALL	Copy_String_Index
+280+  0786 D9          >			EXX
+281+  0787 C9           			RET
+282+  0788
+283+  0788 7A           Disassemble_Op_X1:	LD	A,D			; If Z is 6
+284+  0789 FE 06        			CP	6
+285+  078B 20 0E        			JR 	NZ,1F
+286+  078D 7B           			LD	A,E			; and Y is 6
+287+  078E FE 06        			CP	6
+288+  0790 20 09        			JR	NZ,1F
+289+  0792              			TEXT	"HALT"			; The opcode is HALT
+289+  0792 CD 06 0B    >			CALL	Copy_String
+289+  0795 48 41 4C 54 >			DZ	"HALT"
+289+  0799 00          >
+290+  079A C9           			RET
+291+  079B              1:			TEXT	"LD "			; Otherwis LD r[y], r[z]
+291+  079B CD 06 0B    >			CALL	Copy_String
+291+  079E 4C 44 20 00 >			DZ	"LD "
+292+  07A2              			TEXTINS	DTable_R, E
+292+  07A2 7B          >			LD 	A, E
+292+  07A3             >			TEXTINM	DTable_R, Copy_String_Index_S
+292+  07A3 D9          >			EXX
+292+  07A4 21 BC 0B    >			LD	HL, DTable_R
+292+  07A7 CD 0E 0B    >			CALL	Copy_String_Index_S
+292+  07AA D9          >			EXX
+293+  07AB              			CHAR	","
+293+  07AB FD 36 00 2C >			LD	(IY+0), ","
+293+  07AF FD 23       >			INC	IY
+294+  07B1              			TEXTINS	DTable_R, D
+294+  07B1 7A          >			LD 	A, D
+294+  07B2             >			TEXTINM	DTable_R, Copy_String_Index_S
+294+  07B2 D9          >			EXX
+294+  07B3 21 BC 0B    >			LD	HL, DTable_R
+294+  07B6 CD 0E 0B    >			CALL	Copy_String_Index_S
+294+  07B9 D9          >			EXX
+295+  07BA C9           			RET
+296+  07BB
+297+  07BB              Disassemble_Op_X2:	TEXTIN	DTable_ALU, E		; ALU[y] r[z]
+297+  07BB 7B          >			LD 	A, E
+297+  07BC             >			TEXTINM	DTable_ALU, Copy_String_Index
+297+  07BC D9          >			EXX
+297+  07BD 21 50 0C    >			LD	HL, DTable_ALU
+297+  07C0 CD 27 0B    >			CALL	Copy_String_Index
+297+  07C3 D9          >			EXX
+298+  07C4              			TEXTINS	DTable_R, D
+298+  07C4 7A          >			LD 	A, D
+298+  07C5             >			TEXTINM	DTable_R, Copy_String_Index_S
+298+  07C5 D9          >			EXX
+298+  07C6 21 BC 0B    >			LD	HL, DTable_R
+298+  07C9 CD 0E 0B    >			CALL	Copy_String_Index_S
+298+  07CC D9          >			EXX
+299+  07CD C9           			RET
+300+  07CE
+301+  07CE 7A           Disassemble_Op_X3:	LD 	A,D			; Get Z
+302+  07CF FE 07        			CP	7
+302+  07D1 CA 43 09       JP	Z, Disassemble_Op_X3Z7
+303+  07D4 FE 06        			CP	6
+303+  07D6 CA 33 09       JP	Z, Disassemble_Op_X3Z6
+304+  07D9 FE 05        			CP	5
+304+  07DB CA FD 08       JP	Z, Disassemble_Op_X3Z5
+305+  07DE FE 04        			CP 	4
+305+  07E0 CA E3 08       JP	Z, Disassemble_Op_X3Z4
+306+  07E3 FE 03        			CP	3
+306+  07E5 CA 6B 08       JP	Z, Disassemble_Op_X3Z3
+307+  07E8 FE 02        			CP	2
+307+  07EA CA 53 08       JP	Z, Disassemble_Op_X3Z2
+308+  07ED FE 01        			CP	1
+308+  07EF CA 04 08       JP	Z, Disassemble_Op_X3Z1
+309+  07F2
+310+  07F2              Disassemble_Op_X3Z0:	TEXT 	"RET "			; RET cc[y]
+310+  07F2 CD 06 0B    >			CALL	Copy_String
+310+  07F5 52 45 54 20 >			DZ	"RET "
+310+  07F9 00          >
+311+  07FA              			TEXTIN	DTable_CC, E
+311+  07FA 7B          >			LD 	A, E
+311+  07FB             >			TEXTINM	DTable_CC, Copy_String_Index
+311+  07FB D9          >			EXX
+311+  07FC 21 34 0C    >			LD	HL, DTable_CC
+311+  07FF CD 27 0B    >			CALL	Copy_String_Index
+311+  0802 D9          >			EXX
+312+  0803 C9           			RET
+313+  0804
+314+  0804 CB 58        Disassemble_Op_X3Z1:	BIT 	3,B
+315+  0806 20 12        			JR	NZ,1F
+316+  0808              			TEXT	"POP "			; Q = 0
+316+  0808 CD 06 0B    >			CALL	Copy_String
+316+  080B 50 4F 50 20 >			DZ	"POP "
+316+  080F 00          >
+317+  0810              			TEXTINS	DTable_RP2, C
+317+  0810 79          >			LD 	A, C
+317+  0811             >			TEXTINM	DTable_RP2, Copy_String_Index_S
+317+  0811 D9          >			EXX
+317+  0812 21 13 0C    >			LD	HL, DTable_RP2
+317+  0815 CD 0E 0B    >			CALL	Copy_String_Index_S
+317+  0818 D9          >			EXX
+318+  0819 C9           			RET
+319+  081A 79           1:			LD	A,C 			; Q = 1
+320+  081B              			TEXTIF	0, "RET"
+320+  081B FE 00       >			CP	0
+320+  081D 20 08       >			JR	NZ, .S1
+320+  081F CD 06 0B    >			CALL	Copy_String
+320+  0822 52 45 54 00 >			DZ	"RET"
+320+  0826 C9          >			RET
+320+  0827             >.S1:			;
+321+  0827              			TEXTIF	1, "EXX"
+321+  0827 FE 01       >			CP	1
+321+  0829 20 08       >			JR	NZ, .S1
+321+  082B CD 06 0B    >			CALL	Copy_String
+321+  082E 45 58 58 00 >			DZ	"EXX"
+321+  0832 C9          >			RET
+321+  0833             >.S1:			;
+322+  0833              			TEXTIF	2, "JP HL"
+322+  0833 FE 02       >			CP	2
+322+  0835 20 0A       >			JR	NZ, .S1
+322+  0837 CD 06 0B    >			CALL	Copy_String
+322+  083A 4A 50 20 48 >			DZ	"JP HL"
+322+  083E 4C 00       >
+322+  0840 C9          >			RET
+322+  0841             >.S1:			;
+323+  0841              			TEXTIF	3, "LD SP,HL"
+323+  0841 FE 03       >			CP	3
+323+  0843 20 0D       >			JR	NZ, .S1
+323+  0845 CD 06 0B    >			CALL	Copy_String
+323+  0848 4C 44 20 53 >			DZ	"LD SP,HL"
+323+  084C 50 2C 48 4C >
+323+  0850 00          >
+323+  0851 C9          >			RET
+323+  0852             >.S1:			;
+324+  0852 C9           			RET
+325+  0853
+326+  0853              Disassemble_Op_X3Z2:	TEXT	"JP "			; JP cc[y]
+326+  0853 CD 06 0B    >			CALL	Copy_String
+326+  0856 4A 50 20 00 >			DZ	"JP "
+327+  085A              			TEXTIN	DTable_CC, E
+327+  085A 7B          >			LD 	A, E
+327+  085B             >			TEXTINM	DTable_CC, Copy_String_Index
+327+  085B D9          >			EXX
+327+  085C 21 34 0C    >			LD	HL, DTable_CC
+327+  085F CD 27 0B    >			CALL	Copy_String_Index
+327+  0862 D9          >			EXX
+328+  0863              			TEXT	",?W"
+328+  0863 CD 06 0B    >			CALL	Copy_String
+328+  0866 2C 3F 57 00 >			DZ	",?W"
+329+  086A C9           			RET
+330+  086B
+331+  086B 7B           Disassemble_Op_X3Z3:	LD	A,E
+332+  086C FE 01        			CP	1
+333+  086E 20 05        			JR 	NZ,1F
+334+  0870 DD 36 07 CB  			LD	(IX+7),0xCB
+335+  0874 C9           			RET
+336+  0875              1:			TEXTIF	0, "JP ?W"
+336+  0875 FE 00       >			CP	0
+336+  0877 20 0A       >			JR	NZ, .S1
+336+  0879 CD 06 0B    >			CALL	Copy_String
+336+  087C 4A 50 20 3F >			DZ	"JP ?W"
+336+  0880 57 00       >
+336+  0882 C9          >			RET
+336+  0883             >.S1:			;
+337+  0883              			TEXTIF	2, "OUT (?B),A"
+337+  0883 FE 02       >			CP	2
+337+  0885 20 0F       >			JR	NZ, .S1
+337+  0887 CD 06 0B    >			CALL	Copy_String
+337+  088A 4F 55 54 20 >			DZ	"OUT (?B),A"
+337+  088E 28 3F 42 29 >
+337+  0892 2C 41 00    >
+337+  0895 C9          >			RET
+337+  0896             >.S1:			;
+338+  0896              			TEXTIF	3, "IN A,(?B)"
+338+  0896 FE 03       >			CP	3
+338+  0898 20 0E       >			JR	NZ, .S1
+338+  089A CD 06 0B    >			CALL	Copy_String
+338+  089D 49 4E 20 41 >			DZ	"IN A,(?B)"
+338+  08A1 2C 28 3F 42 >
+338+  08A5 29 00       >
+338+  08A7 C9          >			RET
+338+  08A8             >.S1:			;
+339+  08A8              			TEXTIF	4, "EX (SP),HL"
+339+  08A8 FE 04       >			CP	4
+339+  08AA 20 0F       >			JR	NZ, .S1
+339+  08AC CD 06 0B    >			CALL	Copy_String
+339+  08AF 45 58 20 28 >			DZ	"EX (SP),HL"
+339+  08B3 53 50 29 2C >
+339+  08B7 48 4C 00    >
+339+  08BA C9          >			RET
+339+  08BB             >.S1:			;
+340+  08BB              			TEXTIF 	5, "EX DE,HL"
+340+  08BB FE 05       >			CP	5
+340+  08BD 20 0D       >			JR	NZ, .S1
+340+  08BF CD 06 0B    >			CALL	Copy_String
+340+  08C2 45 58 20 44 >			DZ	"EX DE,HL"
+340+  08C6 45 2C 48 4C >
+340+  08CA 00          >
+340+  08CB C9          >			RET
+340+  08CC             >.S1:			;
+341+  08CC              			TEXTIF	6, "DI"
+341+  08CC FE 06       >			CP	6
+341+  08CE 20 07       >			JR	NZ, .S1
+341+  08D0 CD 06 0B    >			CALL	Copy_String
+341+  08D3 44 49 00    >			DZ	"DI"
+341+  08D6 C9          >			RET
+341+  08D7             >.S1:			;
+342+  08D7              			TEXTIF	7, "EI"
+342+  08D7 FE 07       >			CP	7
+342+  08D9 20 07       >			JR	NZ, .S1
+342+  08DB CD 06 0B    >			CALL	Copy_String
+342+  08DE 45 49 00    >			DZ	"EI"
+342+  08E1 C9          >			RET
+342+  08E2             >.S1:			;
+343+  08E2 C9           			RET
+344+  08E3
+345+  08E3              Disassemble_Op_X3Z4:	TEXT	"CALL "			; CALL cc[y]
+345+  08E3 CD 06 0B    >			CALL	Copy_String
+345+  08E6 43 41 4C 4C >			DZ	"CALL "
+345+  08EA 20 00       >
+346+  08EC              			TEXTIN	DTable_CC, E
+346+  08EC 7B          >			LD 	A, E
+346+  08ED             >			TEXTINM	DTable_CC, Copy_String_Index
+346+  08ED D9          >			EXX
+346+  08EE 21 34 0C    >			LD	HL, DTable_CC
+346+  08F1 CD 27 0B    >			CALL	Copy_String_Index
+346+  08F4 D9          >			EXX
+347+  08F5              			TEXT	",?W"
+347+  08F5 CD 06 0B    >			CALL	Copy_String
+347+  08F8 2C 3F 57 00 >			DZ	",?W"
+348+  08FC C9           			RET
+349+  08FD
+350+  08FD CB 58        Disassemble_Op_X3Z5:	BIT 	3,B
+351+  08FF 20 13        			JR	NZ,1F
+352+  0901              			TEXT	"PUSH "			; Q = 0
+352+  0901 CD 06 0B    >			CALL	Copy_String
+352+  0904 50 55 53 48 >			DZ	"PUSH "
+352+  0908 20 00       >
+353+  090A              			TEXTINS	DTable_RP2, C
+353+  090A 79          >			LD 	A, C
+353+  090B             >			TEXTINM	DTable_RP2, Copy_String_Index_S
+353+  090B D9          >			EXX
+353+  090C 21 13 0C    >			LD	HL, DTable_RP2
+353+  090F CD 0E 0B    >			CALL	Copy_String_Index_S
+353+  0912 D9          >			EXX
+354+  0913 C9           			RET
+355+  0914 79           1:			LD	A,C 			; Q = 1
+356+  0915              			TEXTIF	0, "CALL ?W"
+356+  0915 FE 00       >			CP	0
+356+  0917 20 0C       >			JR	NZ, .S1
+356+  0919 CD 06 0B    >			CALL	Copy_String
+356+  091C 43 41 4C 4C >			DZ	"CALL ?W"
+356+  0920 20 3F 57 00 >
+356+  0924 C9          >			RET
+356+  0925             >.S1:			;
+357+  0925 CB 27        			SLA	A 			; Return opcodes DD,ED or FD
+358+  0927 CB 27        			SLA	A
+359+  0929 CB 27        			SLA 	A
+360+  092B CB 27        			SLA 	A
+361+  092D C6 CD        			ADD	A, 0xCD
+362+  092F DD 77 07     			LD	(IX+7),A		; And store the shift byte
+363+  0932 C9           			RET
+364+  0933
+365+  0933              Disassemble_Op_X3Z6:	TEXTIN	DTable_ALU, E		; ALU[y],n
+365+  0933 7B          >			LD 	A, E
+365+  0934             >			TEXTINM	DTable_ALU, Copy_String_Index
+365+  0934 D9          >			EXX
+365+  0935 21 50 0C    >			LD	HL, DTable_ALU
+365+  0938 CD 27 0B    >			CALL	Copy_String_Index
+365+  093B D9          >			EXX
+366+  093C              			TEXT	"?B"
+366+  093C CD 06 0B    >			CALL	Copy_String
+366+  093F 3F 42 00    >			DZ	"?B"
+367+  0942 C9           			RET
+368+  0943
+369+  0943              Disassemble_Op_X3Z7:	TEXT 	"RST "
+369+  0943 CD 06 0B    >			CALL	Copy_String
+369+  0946 52 53 54 20 >			DZ	"RST "
+369+  094A 00          >
+370+  094B 7B           			LD 	A,E
+371+  094C CB 27        			SLA 	A
+372+  094E CB 27        			SLA 	A
+373+  0950 CB 27        			SLA 	A
+374+  0952 C3 A5 0B     			JP	Copy_Hex8
+375+  0955
+376+  0955 78           Disassemble_Op_CB:	LD	A,B
+377+  0956 E6 C0        			AND	0b11000000		; Get the X value
+378+  0958 FE C0        			CP	0b11000000
+378+  095A 28 5B          JR	Z, 3F
+379+  095C FE 80        			CP	0b10000000
+379+  095E 28 37          JR 	Z, 2F
+380+  0960 FE 40        			CP 	0b01000000
+380+  0962 28 13          JR	Z, 1F
+381+  0964              			TEXTIN	DTable_ROT, E		; ROT[y], r[z]
+381+  0964 7B          >			LD 	A, E
+381+  0965             >			TEXTINM	DTable_ROT, Copy_String_Index
+381+  0965 D9          >			EXX
+381+  0966 21 84 0C    >			LD	HL, DTable_ROT
+381+  0969 CD 27 0B    >			CALL	Copy_String_Index
+381+  096C D9          >			EXX
+382+  096D              			TEXTINS	DTable_R, D
+382+  096D 7A          >			LD 	A, D
+382+  096E             >			TEXTINM	DTable_R, Copy_String_Index_S
+382+  096E D9          >			EXX
+382+  096F 21 BC 0B    >			LD	HL, DTable_R
+382+  0972 CD 0E 0B    >			CALL	Copy_String_Index_S
+382+  0975 D9          >			EXX
+383+  0976 C9           			RET
+384+  0977              1:			TEXT	"BIT "			; BIT y, r[z]
+384+  0977 CD 06 0B    >			CALL	Copy_String
+384+  097A 42 49 54 20 >			DZ	"BIT "
+384+  097E 00          >
+385+  097F 7B           			LD	A,E
+386+  0980 C6 30        			ADD	A,'0'
+387+  0982              			CHAR	A
+387+  0982 FD 77 00    >			LD	(IY+0), A
+387+  0985 FD 23       >			INC	IY
+388+  0987              			CHAR	","
+388+  0987 FD 36 00 2C >			LD	(IY+0), ","
+388+  098B FD 23       >			INC	IY
+389+  098D              			TEXTINS	DTable_R, D
+389+  098D 7A          >			LD 	A, D
+389+  098E             >			TEXTINM	DTable_R, Copy_String_Index_S
+389+  098E D9          >			EXX
+389+  098F 21 BC 0B    >			LD	HL, DTable_R
+389+  0992 CD 0E 0B    >			CALL	Copy_String_Index_S
+389+  0995 D9          >			EXX
+390+  0996 C9           			RET
+391+  0997              2:			TEXT	"RES "			; RES y, r[7]
+391+  0997 CD 06 0B    >			CALL	Copy_String
+391+  099A 52 45 53 20 >			DZ	"RES "
+391+  099E 00          >
+392+  099F 7B           			LD	A,E
+393+  09A0 C6 30        			ADD	A,'0'
+394+  09A2              			CHAR	A
+394+  09A2 FD 77 00    >			LD	(IY+0), A
+394+  09A5 FD 23       >			INC	IY
+395+  09A7              			CHAR	","
+395+  09A7 FD 36 00 2C >			LD	(IY+0), ","
+395+  09AB FD 23       >			INC	IY
+396+  09AD              			TEXTINS	DTable_R, D
+396+  09AD 7A          >			LD 	A, D
+396+  09AE             >			TEXTINM	DTable_R, Copy_String_Index_S
+396+  09AE D9          >			EXX
+396+  09AF 21 BC 0B    >			LD	HL, DTable_R
+396+  09B2 CD 0E 0B    >			CALL	Copy_String_Index_S
+396+  09B5 D9          >			EXX
+397+  09B6 C9           			RET
+398+  09B7              3:			TEXT	"SET "			; SET y, r[7]
+398+  09B7 CD 06 0B    >			CALL	Copy_String
+398+  09BA 53 45 54 20 >			DZ	"SET "
+398+  09BE 00          >
+399+  09BF 7B           			LD	A,E
+400+  09C0 C6 30        			ADD	A,'0'
+401+  09C2              			CHAR	A
+401+  09C2 FD 77 00    >			LD	(IY+0), A
+401+  09C5 FD 23       >			INC	IY
+402+  09C7              			CHAR	","
+402+  09C7 FD 36 00 2C >			LD	(IY+0), ","
+402+  09CB FD 23       >			INC	IY
+403+  09CD              			TEXTINS	DTable_R, D
+403+  09CD 7A          >			LD 	A, D
+403+  09CE             >			TEXTINM	DTable_R, Copy_String_Index_S
+403+  09CE D9          >			EXX
+403+  09CF 21 BC 0B    >			LD	HL, DTable_R
+403+  09D2 CD 0E 0B    >			CALL	Copy_String_Index_S
+403+  09D5 D9          >			EXX
+404+  09D6 C9           			RET
+405+  09D7
+406+  09D7 78           Disassemble_Op_ED:	LD	A,B
+407+  09D8 E6 C0        			AND	0b11000000		; Get the X value
+408+  09DA FE 80        			CP	0b10000000
+408+  09DC CA F0 0A       JP Z, Disassemble_Op_ED_X2
+409+  09DF FE 40        			CP	0b01000000
+409+  09E1 CA E5 09       JP Z, Disassemble_Op_ED_X1
+410+  09E4 C9           			RET
+411+  09E5 7A           Disassemble_Op_ED_X1:	LD 	A,D			; Get Z
+412+  09E6 FE 07        			CP	7
+412+  09E8 CA E6 0A       JP	Z, Disassemble_Op_ED_X1Z7
+413+  09EB FE 06        			CP	6
+413+  09ED CA D5 0A       JP	Z, Disassemble_Op_ED_X1Z6
+414+  09F0 FE 05        			CP	5
+414+  09F2 CA BE 0A       JP	Z, Disassemble_Op_ED_X1Z5
+415+  09F5 FE 04        			CP 	4
+415+  09F7 CA B6 0A       JP	Z, Disassemble_Op_ED_X1Z4
+416+  09FA FE 03        			CP	3
+416+  09FC CA 82 0A       JP	Z, Disassemble_Op_ED_X1Z3
+417+  09FF FE 02        			CP	2
+417+  0A01 CA 54 0A       JP	Z, Disassemble_Op_ED_X1Z2
+418+  0A04 FE 01        			CP	1
+418+  0A06 CA 32 0A       JP	Z, Disassemble_Op_ED_X1Z1
+419+  0A09
+420+  0A09 7B           			LD	A,E
+421+  0A0A FE 06        			CP	6
+422+  0A0C 28 19        			JR 	Z, 1F
+423+  0A0E              			TEXT 	"IN "
+423+  0A0E CD 06 0B    >			CALL	Copy_String
+423+  0A11 49 4E 20 00 >			DZ	"IN "
+424+  0A15              			TEXTINS	DTable_R, E
+424+  0A15 7B          >			LD 	A, E
+424+  0A16             >			TEXTINM	DTable_R, Copy_String_Index_S
+424+  0A16 D9          >			EXX
+424+  0A17 21 BC 0B    >			LD	HL, DTable_R
+424+  0A1A CD 0E 0B    >			CALL	Copy_String_Index_S
+424+  0A1D D9          >			EXX
+425+  0A1E              			TEXT	",(C)"
+425+  0A1E CD 06 0B    >			CALL	Copy_String
+425+  0A21 2C 28 43 29 >			DZ	",(C)"
+425+  0A25 00          >
+426+  0A26 C9           			RET
+427+  0A27              1:			TEXT	"IN (C)"
+427+  0A27 CD 06 0B    >			CALL	Copy_String
+427+  0A2A 49 4E 20 28 >			DZ	"IN (C)"
+427+  0A2E 43 29 00    >
+428+  0A31 C9           			RET
+429+  0A32
+430+  0A32              Disassemble_Op_ED_X1Z1:	TEXT 	"OUT (C),"
+430+  0A32 CD 06 0B    >			CALL	Copy_String
+430+  0A35 4F 55 54 20 >			DZ	"OUT (C),"
+430+  0A39 28 43 29 2C >
+430+  0A3D 00          >
+431+  0A3E 7B           			LD	A,E
+432+  0A3F FE 06        			CP	6
+433+  0A41 28 0A        			JR 	Z, 1F
+434+  0A43              			TEXTINS	DTable_R, E
+434+  0A43 7B          >			LD 	A, E
+434+  0A44             >			TEXTINM	DTable_R, Copy_String_Index_S
+434+  0A44 D9          >			EXX
+434+  0A45 21 BC 0B    >			LD	HL, DTable_R
+434+  0A48 CD 0E 0B    >			CALL	Copy_String_Index_S
+434+  0A4B D9          >			EXX
+435+  0A4C C9           			RET
+436+  0A4D              1:			CHAR	"0"
+436+  0A4D FD 36 00 30 >			LD	(IY+0), "0"
+436+  0A51 FD 23       >			INC	IY
+437+  0A53 C9           			RET
+438+  0A54
+439+  0A54 CB 58        Disassemble_Op_ED_X1Z2:	BIT	3,B
+440+  0A56 20 15        			JR	NZ, 1F
+441+  0A58              			TEXT	"SBC HL,"		; Q = 0
+441+  0A58 CD 06 0B    >			CALL	Copy_String
+441+  0A5B 53 42 43 20 >			DZ	"SBC HL,"
+441+  0A5F 48 4C 2C 00 >
+442+  0A63              			TEXTINS	DTable_RP1, C
+442+  0A63 79          >			LD 	A, C
+442+  0A64             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+442+  0A64 D9          >			EXX
+442+  0A65 21 07 0C    >			LD	HL, DTable_RP1
+442+  0A68 CD 0E 0B    >			CALL	Copy_String_Index_S
+442+  0A6B D9          >			EXX
+443+  0A6C C9           			RET
+444+  0A6D              1:			TEXT	"ADC HL,"		; Q = 1
+444+  0A6D CD 06 0B    >			CALL	Copy_String
+444+  0A70 41 44 43 20 >			DZ	"ADC HL,"
+444+  0A74 48 4C 2C 00 >
+445+  0A78              			TEXTINS	DTable_RP1, C
+445+  0A78 79          >			LD 	A, C
+445+  0A79             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+445+  0A79 D9          >			EXX
+445+  0A7A 21 07 0C    >			LD	HL, DTable_RP1
+445+  0A7D CD 0E 0B    >			CALL	Copy_String_Index_S
+445+  0A80 D9          >			EXX
+446+  0A81 C9           			RET
+447+  0A82
+448+  0A82 CB 58        Disassemble_Op_ED_X1Z3: BIT	3,B
+449+  0A84 20 16        			JR	NZ, 1F
+450+  0A86              			TEXT	"LD (?W),"		; Q = 0
+450+  0A86 CD 06 0B    >			CALL	Copy_String
+450+  0A89 4C 44 20 28 >			DZ	"LD (?W),"
+450+  0A8D 3F 57 29 2C >
+450+  0A91 00          >
+451+  0A92              			TEXTINS	DTable_RP1, C
+451+  0A92 79          >			LD 	A, C
+451+  0A93             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+451+  0A93 D9          >			EXX
+451+  0A94 21 07 0C    >			LD	HL, DTable_RP1
+451+  0A97 CD 0E 0B    >			CALL	Copy_String_Index_S
+451+  0A9A D9          >			EXX
+452+  0A9B C9           			RET
+453+  0A9C              1:			TEXT	"LD "			; Q = 1
+453+  0A9C CD 06 0B    >			CALL	Copy_String
+453+  0A9F 4C 44 20 00 >			DZ	"LD "
+454+  0AA3              			TEXTINS	DTable_RP1, C
+454+  0AA3 79          >			LD 	A, C
+454+  0AA4             >			TEXTINM	DTable_RP1, Copy_String_Index_S
+454+  0AA4 D9          >			EXX
+454+  0AA5 21 07 0C    >			LD	HL, DTable_RP1
+454+  0AA8 CD 0E 0B    >			CALL	Copy_String_Index_S
+454+  0AAB D9          >			EXX
+455+  0AAC              			TEXT	",(?W)"
+455+  0AAC CD 06 0B    >			CALL	Copy_String
+455+  0AAF 2C 28 3F 57 >			DZ	",(?W)"
+455+  0AB3 29 00       >
+456+  0AB5 C9           			RET
+457+  0AB6
+458+  0AB6              Disassemble_Op_ED_X1Z4:	TEXT	"NEG"
+458+  0AB6 CD 06 0B    >			CALL	Copy_String
+458+  0AB9 4E 45 47 00 >			DZ	"NEG"
+459+  0ABD C9           			RET
+460+  0ABE
+461+  0ABE 7B           Disassemble_Op_ED_X1Z5:	LD	A,E
+462+  0ABF FE 01        			CP	1
+463+  0AC1 28 09        			JR	Z,1F
+464+  0AC3              			TEXT	"RETN"
+464+  0AC3 CD 06 0B    >			CALL	Copy_String
+464+  0AC6 52 45 54 4E >			DZ	"RETN"
+464+  0ACA 00          >
+465+  0ACB C9           			RET
+466+  0ACC              1:			TEXT	"RETI"
+466+  0ACC CD 06 0B    >			CALL	Copy_String
+466+  0ACF 52 45 54 49 >			DZ	"RETI"
+466+  0AD3 00          >
+467+  0AD4 C9           			RET
+468+  0AD5
+469+  0AD5              Disassemble_Op_ED_X1Z6:	TEXT	"IM "
+469+  0AD5 CD 06 0B    >			CALL	Copy_String
+469+  0AD8 49 4D 20 00 >			DZ	"IM "
+470+  0ADC              			TEXTIN	DTable_IM, E
+470+  0ADC 7B          >			LD 	A, E
+470+  0ADD             >			TEXTINM	DTable_IM, Copy_String_Index
+470+  0ADD D9          >			EXX
+470+  0ADE 21 B2 0C    >			LD	HL, DTable_IM
+470+  0AE1 CD 27 0B    >			CALL	Copy_String_Index
+470+  0AE4 D9          >			EXX
+471+  0AE5 C9           			RET
+472+  0AE6
+473+  0AE6              Disassemble_Op_ED_X1Z7:	TEXTIN	DTable_O2, E
+473+  0AE6 7B          >			LD 	A, E
+473+  0AE7             >			TEXTINM	DTable_O2, Copy_String_Index
+473+  0AE7 D9          >			EXX
+473+  0AE8 21 48 0D    >			LD	HL, DTable_O2
+473+  0AEB CD 27 0B    >			CALL	Copy_String_Index
+473+  0AEE D9          >			EXX
+474+  0AEF C9           			RET
+475+  0AF0
+476+  0AF0 7A           Disassemble_Op_ED_X2:	LD	A,D 			; If z > 4 then invalid instruction
+477+  0AF1 FE 04        			CP	4
+478+  0AF3 D8           			RET	C
+479+  0AF4 7B           			LD	A,E			; If y > 4 then invalid instruction
+480+  0AF5 D6 04        			SUB	4
+481+  0AF7 D8           			RET	C
+482+  0AF8 CB 27        			SLA	A
+483+  0AFA CB 27        			SLA	A
+484+  0AFC 82           			ADD	A,D
+485+  0AFD              			TEXTINA	DTable_BLI		; BLI[z+4(y-4)]
+485+  0AFD             >			TEXTINM	DTable_BLI, Copy_String_Index
+485+  0AFD D9          >			EXX
+485+  0AFE 21 C4 0C    >			LD	HL, DTable_BLI
+485+  0B01 CD 27 0B    >			CALL	Copy_String_Index
+485+  0B04 D9          >			EXX
+486+  0B05 C9           			RET
+487+  0B06
+488+  0B06              ; Copy a zero terminated string
+489+  0B06              ; String text placed directly after call
+490+  0B06              ; IY: Destination
+491+  0B06              ;
+492+  0B06 D9           Copy_String:		EXX
+493+  0B07 E3           			EX	(SP),HL
+494+  0B08 CD 36 0B     			CALL	Copy_String_1
+495+  0B0B E3           			EX	(SP),HL
+496+  0B0C D9           			EXX
+497+  0B0D C9           			RET
+498+  0B0E
+499+  0B0E              ; Copy a zero terminated string indirectly from a table
+500+  0B0E              ; IY: Destination
+501+  0B0E              ; HL: Table to index into
+502+  0B0E              ;  A: Index into table
+503+  0B0E              ; Returns:
+504+  0B0E              ; HL: Pointer to zero-terminated string
+505+  0B0E              ;
+506+  0B0E E5           Copy_String_Index_S:	PUSH	HL
+507+  0B0F 6F           			LD	L,A
+508+  0B10 DD 7E 07     			LD	A,(IX+7)
+509+  0B13
+510+  0B13 FE DD        			CP	0xDD
+511+  0B15 20 05        			JR	NZ,1F
+512+  0B17 3E 08        			LD	A,8
+513+  0B19 85           			ADD	A,L
+514+  0B1A 18 0A        			JR	5F
+515+  0B1C
+516+  0B1C FE FD        1:			CP	0xFD
+517+  0B1E 20 05        			JR	NZ,2F
+518+  0B20 3E 10        			LD	A,16
+519+  0B22 85           			ADD	A,L
+520+  0B23 18 01        			JR	5F
+521+  0B25
+522+  0B25 7D           2:			LD	A,L
+523+  0B26 E1           5:			POP	HL
+524+  0B27
+525+  0B27 E5           Copy_String_Index:	PUSH	HL			; Store the address of the table
+526+  0B28 85           			ADD	A,L			; Add the index to it
+527+  0B29 6F           			LD	L,A
+528+  0B2A 7C           			LD	A,H
+529+  0B2B CE 00        			ADC	A,0
+530+  0B2D 67           			LD 	H,A
+531+  0B2E 7E           			LD	A,(HL)			; Fetch the relative address of the string to this table
+532+  0B2F E1           			POP	HL			; Pop the address of the table
+533+  0B30 85           			ADD	A,L			; Add the relative address to this
+534+  0B31 6F           			LD	L,A
+535+  0B32 7C           			LD	A,H
+536+  0B33 CE 00        			ADC	A,0
+537+  0B35 67           			LD 	H,A
+538+  0B36
+539+  0B36              ; Copy a zero terminated string from a memory address
+540+  0B36              ; IY: Destination
+541+  0B36              ; HL: Source
+542+  0B36              ;
+543+  0B36 7E           Copy_String_1:		LD 	A,(HL)
+544+  0B37 FE 3F        			CP 	"?"
+545+  0B39 20 14        			JR 	NZ,1F
+546+  0B3B 23           			INC	HL
+547+  0B3C 7E           			LD 	A,(HL)
+548+  0B3D 23           			INC	HL
+549+  0B3E FE 42        			CP	"B"
+549+  0B40 CA 59 0B       JP	Z,Copy_String_B
+550+  0B43 FE 57        			CP	"W"
+550+  0B45 CA 65 0B       JP Z,Copy_String_W
+551+  0B48 FE 52        			CP	"R"
+551+  0B4A CA 86 0B       JP Z,Copy_String_R
+552+  0B4D 18 03        			JR	2F
+553+  0B4F FD 77 00     1:			LD	(IY+0),A
+554+  0B52 23           2:			INC 	HL
+555+  0B53 B7           			OR	A
+556+  0B54 C8           			RET	Z
+557+  0B55 FD 23        			INC	IY
+558+  0B57 18 DD        			JR	Copy_String_1
+559+  0B59
+560+  0B59 DD 34 02     Copy_String_B:		INC	(IX+2)
+561+  0B5C D9           			EXX
+562+  0B5D 7E           			LD	A,(HL)
+562+  0B5E 23             INC HL
+563+  0B5F D9           			EXX
+564+  0B60 CD A5 0B     			CALL	Copy_Hex8
+565+  0B63 18 D1        			JR	Copy_String_1
+566+  0B65
+567+  0B65 DD 34 02     Copy_String_W:		INC	(IX+2)
+568+  0B68 DD 34 02     			INC	(IX+2)
+569+  0B6B E5           			PUSH 	HL
+570+  0B6C D9           			EXX
+571+  0B6D 7E           			LD	A,(HL)
+571+  0B6E DD 77 03       LD (IX+3),A
+571+  0B71 23             INC HL
+572+  0B72 7E           			LD	A,(HL)
+572+  0B73 DD 77 04       LD (IX+4),A
+572+  0B76 23             INC HL
+573+  0B77 D9           			EXX
+574+  0B78 DD 7E 03     			LD	A,(IX+3)
+574+  0B7B 6F             LD L,A
+575+  0B7C DD 7E 04     			LD	A,(IX+4)
+575+  0B7F 67             LD H,A
+576+  0B80 CD A0 0B     			CALL	Copy_Hex16
+577+  0B83 E1           			POP	HL
+578+  0B84 18 B0        			JR 	Copy_String_1
+579+  0B86
+580+  0B86 DD 34 02     Copy_String_R:		INC	(IX+2)
+581+  0B89 E5           			PUSH	HL
+582+  0B8A D9           			EXX
+583+  0B8B 7E           			LD	A,(HL)
+583+  0B8C 23             INC HL
+584+  0B8D E5           			PUSH	HL
+585+  0B8E D9           			EXX
+586+  0B8F E1           			POP	HL
+587+  0B90              			ADD_HL_A_SIGNED
+587+  0B90 B7          >			OR A
+587+  0B91 F2 95 0B    >			JP P, .S1
+587+  0B94 25          >			DEC H
+587+  0B95 85          >.S1			ADD A, L
+587+  0B96 6F          >			LD L, A
+587+  0B97 8C          >			ADC A, H
+587+  0B98 95          >			SUB L
+587+  0B99 67          >			LD H, A
+588+  0B9A CD A0 0B     			CALL	Copy_Hex16
+589+  0B9D E1           			POP	HL
+590+  0B9E 18 96        			JR	Copy_String_1
+591+  0BA0
+592+  0BA0              ; Copy a 16-bit HEX number to a buffer
+593+  0BA0              ; IY: Address of buffer
+594+  0BA0              ; HL: Number to print
+595+  0BA0              ;
+596+  0BA0 7C           Copy_Hex16:		LD A,H
+597+  0BA1 CD A5 0B     			CALL Copy_Hex8
+598+  0BA4 7D           			LD A,L
+599+  0BA5
+600+  0BA5              ; Copy an 8-bit HEX number into a buffer
+601+  0BA5              ; IY: Address of buffer
+602+  0BA5              ;  A: Number to print
+603+  0BA5              ;
+604+  0BA5 F5           Copy_Hex8:		PUSH AF
+605+  0BA6 1F           			RRA
+606+  0BA7 1F           			RRA
+607+  0BA8 1F           			RRA
+608+  0BA9 1F           			RRA
+609+  0BAA CD AE 0B     			CALL 1F
+610+  0BAD F1           			POP AF
+611+  0BAE E6 0F        1:			AND 0x0F
+612+  0BB0 C6 90        			ADD A,0x90
+613+  0BB2 27           			DAA
+614+  0BB3 CE 40        			ADC A,0x40
+615+  0BB5 27           			DAA
+616+  0BB6 FD 77 00     			LD (IY+0),A
+617+  0BB9 FD 23        			INC IY
+618+  0BBB C9           			RET
+619+  0BBC
+620+  0BBC              ; 8-Bit registers
+621+  0BBC              ;
+622+  0BBC 18 1A 1C 1E  DTable_R:		DB	DTable_R0-DTable_R, DTable_R1-DTable_R, DTable_R2-DTable_R, DTable_R3-DTable_R
+623+  0BC0 20 22 24 29  			DB	DTable_R4-DTable_R, DTable_R5-DTable_R, DTable_R6-DTable_R, DTable_R7-DTable_R
+624+  0BC4 18 1A 1C 1E  			DB	DTable_R0-DTable_R, DTable_R1-DTable_R, DTable_R2-DTable_R, DTable_R3-DTable_R
+625+  0BC8 2B 2F 33 29  			DB	DTable_R8-DTable_R, DTable_R9-DTable_R, DTable_RA-DTable_R, DTable_R7-DTable_R
+626+  0BCC 18 1A 1C 1E  			DB	DTable_R0-DTable_R, DTable_R1-DTable_R, DTable_R2-DTable_R, DTable_R3-DTable_R
+627+  0BD0 3B 3F 43 29  			DB	DTable_RB-DTable_R, DTable_RC-DTable_R, DTable_RD-DTable_R, DTable_R7-DTable_R
+628+  0BD4 42 00        DTable_R0:		DZ	"B"
+629+  0BD6 43 00        DTable_R1:		DZ	"C"
+630+  0BD8 44 00        DTable_R2:		DZ	"D"
+631+  0BDA 45 00        DTable_R3:		DZ	"E"
+632+  0BDC 48 00        DTable_R4:		DZ	"H"
+633+  0BDE 4C 00        DTable_R5:		DZ	"L"
+634+  0BE0 28 48 4C 29  DTable_R6:		DZ	"(HL)"
+634+  0BE4 00
+635+  0BE5 41 00        DTable_R7:		DZ	"A"
+636+  0BE7 49 58 48 00  DTable_R8:		DZ 	"IXH"
+637+  0BEB 49 58 4C 00  DTable_R9:		DZ	"IXL"
+638+  0BEF 28 49 58 2B  DTable_RA:		DZ	"(IX+?B)"
+638+  0BF3 3F 42 29 00
+639+  0BF7 49 59 48 00  DTable_RB:		DZ 	"IYH"
+640+  0BFB 49 59 4C 00  DTable_RC:		DZ	"IYL"
+641+  0BFF 28 49 59 2B  DTable_RD:		DZ	"(IY+?B)"
+641+  0C03 3F 42 29 00
+642+  0C07
+643+  0C07              ; 16-Bit Registers
+644+  0C07              ;
+645+  0C07 18 1B 1E 21  DTable_RP1:		DB	DTable_RP10-DTable_RP1, DTable_RP11-DTable_RP1, DTable_RP12-DTable_RP1, DTable_RP13-DTable_RP1
+646+  0C0B 18 1B 27 21  			DB	DTable_RP10-DTable_RP1, DTable_RP11-DTable_RP1, DTable_RP24-DTable_RP1, DTable_RP13-DTable_RP1
+647+  0C0F 18 1B 2A 21  			DB	DTable_RP10-DTable_RP1, DTable_RP11-DTable_RP1, DTable_RP25-DTable_RP1, DTable_RP13-DTable_RP1
+648+  0C13
+649+  0C13 0C 0F 12 18  DTable_RP2:		DB	DTable_RP10-DTable_RP2, DTable_RP11-DTable_RP2, DTable_RP12-DTable_RP2, DTable_RP23-DTable_RP2
+650+  0C17 0C 0F 1B 18  			DB	DTable_RP10-DTable_RP2, DTable_RP11-DTable_RP2, DTable_RP24-DTable_RP2, DTable_RP23-DTable_RP2
+651+  0C1B 0C 0F 1E 18  			DB	DTable_RP10-DTable_RP2, DTable_RP11-DTable_RP2, DTable_RP25-DTable_RP2, DTable_RP23-DTable_RP2
+652+  0C1F 42 43 00     DTable_RP10:		DZ	"BC"
+653+  0C22 44 45 00     DTable_RP11:		DZ	"DE"
+654+  0C25 48 4C 00     DTable_RP12:		DZ	"HL"
+655+  0C28 53 50 00     DTable_RP13:		DZ	"SP"
+656+  0C2B 41 46 00     DTable_RP23:		DZ	"AF"
+657+  0C2E 49 58 00     DTable_RP24:		DZ	"IX"
+658+  0C31 49 59 00     DTable_RP25:		DZ	"IY"
+659+  0C34
+660+  0C34              ; Condition codes
+661+  0C34              ;
+662+  0C34 08 0B 0D 10  DTable_CC:		DB	DTable_CC0-DTable_CC, DTable_CC1-DTable_CC, DTable_CC2-DTable_CC, DTable_CC3-DTable_CC
+663+  0C38 12 15 18 1A  			DB	DTable_CC4-DTable_CC, DTable_CC5-DTable_CC, DTable_CC6-DTable_CC, DTable_CC7-DTable_CC
+664+  0C3C 4E 5A 00     DTable_CC0:		DZ	"NZ"
+665+  0C3F 5A 00        DTable_CC1:		DZ	"Z"
+666+  0C41 4E 43 00     DTable_CC2:		DZ	"NC"
+667+  0C44 43 00        DTable_CC3:		DZ 	"C"
+668+  0C46 50 4F 00     DTable_CC4:		DZ 	"PO"
+669+  0C49 50 45 00     DTable_CC5:		DZ 	"PE"
+670+  0C4C 50 00        DTable_CC6:		DZ 	"P"
+671+  0C4E 4D 00        DTable_CC7:		DZ 	"M"
+672+  0C50
+673+  0C50              ; Arithmetic Operations
+674+  0C50              ;
+675+  0C50 08 0F 16 1B  DTable_ALU:		DB 	DTable_ALU0-DTable_ALU, DTable_ALU1-DTable_ALU, DTable_ALU2-DTable_ALU, DTable_ALU3-DTable_ALU
+676+  0C54 22 27 2C 30  			DB 	DTable_ALU4-DTable_ALU, DTable_ALU5-DTable_ALU, DTable_ALU6-DTable_ALU, DTable_ALU7-DTable_ALU
+677+  0C58 41 44 44 20  DTable_ALU0:		DZ 	"ADD A,"
+677+  0C5C 41 2C 00
+678+  0C5F 41 44 43 20  DTable_ALU1:		DZ	"ADC A,"
+678+  0C63 41 2C 00
+679+  0C66 53 55 42 20  DTable_ALU2:		DZ	"SUB "
+679+  0C6A 00
+680+  0C6B 53 42 43 20  DTable_ALU3:		DZ	"SBC A,"
+680+  0C6F 41 2C 00
+681+  0C72 41 4E 44 20  DTable_ALU4:		DZ	"AND "
+681+  0C76 00
+682+  0C77 58 4F 52 20  DTable_ALU5:		DZ	"XOR "
+682+  0C7B 00
+683+  0C7C 4F 52 20 00  DTable_ALU6:		DZ	"OR "
+684+  0C80 43 50 20 00  DTable_ALU7:		DZ	"CP "
+685+  0C84
+686+  0C84              ; Shift and rotate operations
+687+  0C84              ;
+688+  0C84 08 0D 12 16  DTable_ROT:		DB	DTable_ROT0-DTable_ROT, DTable_ROT1-DTable_ROT, DTable_ROT2-DTable_ROT, DTable_ROT3-DTable_ROT
+689+  0C88 1A 1F 24 29  			DB	DTable_ROT4-DTable_ROT, DTable_ROT5-DTable_ROT, DTable_ROT6-DTable_ROT, DTable_ROT7-DTable_ROT
+690+  0C8C 52 4C 43 20  DTable_ROT0:		DZ	"RLC "
+690+  0C90 00
+691+  0C91 52 52 43 20  DTable_ROT1:		DZ	"RRC "
+691+  0C95 00
+692+  0C96 52 4C 20 00  DTable_ROT2:		DZ	"RL "
+693+  0C9A 52 52 20 00  DTable_ROT3:		DZ	"RR "
+694+  0C9E 53 4C 41 20  DTable_ROT4:		DZ	"SLA "
+694+  0CA2 00
+695+  0CA3 53 52 41 20  DTable_ROT5:		DZ	"SRA "
+695+  0CA7 00
+696+  0CA8 53 4C 4C 20  DTable_ROT6:		DZ	"SLL "
+696+  0CAC 00
+697+  0CAD 53 52 4C 20  DTable_ROT7:		DZ	"SRL "
+697+  0CB1 00
+698+  0CB2
+699+  0CB2              ; Interrupt modes
+700+  0CB2              ;
+701+  0CB2 08 0A 0E 10  DTable_IM:		DB	DTable_IM0-DTable_IM, DTable_IM1-DTable_IM, DTable_IM2-DTable_IM, DTable_IM3-DTable_IM
+702+  0CB6 08 0A 0E 10  			DB	DTable_IM0-DTable_IM, DTable_IM1-DTable_IM, DTable_IM2-DTable_IM, DTable_IM3-DTable_IM
+703+  0CBA 30 00        DTable_IM0:		DZ	"0"
+704+  0CBC 30 2F 31 00  DTable_IM1:		DZ	"0/1"
+705+  0CC0 31 00        DTable_IM2:		DZ	"1"
+706+  0CC2 32 00        DTable_IM3:		DZ	"2"
+707+  0CC4
+708+  0CC4              ; Block instructions
+709+  0CC4              ;
+710+  0CC4 10 14 18 1C  DTable_BLI:		DB	DTable_BLI00-DTable_BLI, DTable_BLI01-DTable_BLI, DTable_BLI02-DTable_BLI, DTable_BLI03-DTable_BLI
+711+  0CC8 21 25 29 2D  			DB	DTable_BLI10-DTable_BLI, DTable_BLI11-DTable_BLI, DTable_BLI12-DTable_BLI, DTable_BLI13-DTable_BLI
+712+  0CCC 32 37 3C 41  			DB	DTable_BLI20-DTable_BLI, DTable_BLI21-DTable_BLI, DTable_BLI22-DTable_BLI, DTable_BLI23-DTable_BLI
+713+  0CD0 46 4B 50 55  			DB	DTable_BLI30-DTable_BLI, DTable_BLI31-DTable_BLI, DTable_BLI32-DTable_BLI, DTable_BLI33-DTable_BLI
+714+  0CD4 4C 44 49 00  DTable_BLI00:		DZ	"LDI"
+715+  0CD8 43 50 49 00  DTable_BLI01:		DZ	"CPI"
+716+  0CDC 49 4E 49 00  DTable_BLI02:		DZ	"INI"
+717+  0CE0 4F 55 54 49  DTable_BLI03:		DZ	"OUTI"
+717+  0CE4 00
+718+  0CE5 4C 44 44 00  DTable_BLI10:		DZ	"LDD"
+719+  0CE9 43 50 44 00  DTable_BLI11:		DZ	"CPD"
+720+  0CED 49 4E 44 00  DTable_BLI12:		DZ	"IND"
+721+  0CF1 4F 55 54 44  DTable_BLI13:		DZ	"OUTD"
+721+  0CF5 00
+722+  0CF6 4C 44 49 52  DTable_BLI20:		DZ	"LDIR"
+722+  0CFA 00
+723+  0CFB 43 50 49 52  DTable_BLI21:		DZ	"CPIR"
+723+  0CFF 00
+724+  0D00 49 4E 49 52  DTable_BLI22:		DZ	"INIR"
+724+  0D04 00
+725+  0D05 4F 54 49 52  DTable_BLI23:		DZ	"OTIR"
+725+  0D09 00
+726+  0D0A 4C 44 44 52  DTable_BLI30:		DZ	"LDDR"
+726+  0D0E 00
+727+  0D0F 43 50 44 52  DTable_BLI31:		DZ	"CPDR"
+727+  0D13 00
+728+  0D14 49 4E 44 52  DTable_BLI32:		DZ	"INDR"
+728+  0D18 00
+729+  0D19 4F 54 44 52  DTable_BLI33:		DZ	"OTDR"
+729+  0D1D 00
+730+  0D1E
+731+  0D1E 08 0D 12 16  DTable_O1:		DB	DTable_O10-DTable_O1, DTable_O11-DTable_O1, DTable_O12-DTable_O1, DTable_O13-DTable_O1
+732+  0D22 1A 1E 22 26  			DB	DTable_O14-DTable_O1, DTable_O15-DTable_O1, DTable_O16-DTable_O1, DTable_O17-DTable_O1
+733+  0D26 52 4C 43 41  DTable_O10:		DZ	"RLCA"
+733+  0D2A 00
+734+  0D2B 52 52 43 41  DTable_O11:		DZ	"RRCA"
+734+  0D2F 00
+735+  0D30 52 4C 41 00  DTable_O12:		DZ	"RLA"
+736+  0D34 52 52 41 00  DTable_O13:		DZ 	"RRA"
+737+  0D38 44 41 41 00  DTable_O14:		DZ 	"DAA"
+738+  0D3C 43 50 4C 00  DTable_O15:		DZ 	"CPL"
+739+  0D40 53 43 46 00  DTable_O16: 		DZ	"SCF"
+740+  0D44 43 43 46 00  DTable_O17:		DZ	"CCF"
+741+  0D48
+742+  0D48 08 0F 16 1D  DTable_O2:		DB	DTable_O20-DTable_O2, DTable_O21-DTable_O2, DTable_O22-DTable_O2, DTable_O23-DTable_O2
+743+  0D4C 24 28 2C 2C  			DB	DTable_O24-DTable_O2, DTable_O25-DTable_O2, DTable_O26-DTable_O2, DTable_O26-DTable_O2
+744+  0D50 4C 44 20 49  DTable_O20:		DZ	"LD I,A"
+744+  0D54 2C 41 00
+745+  0D57 4C 44 20 52  DTable_O21:		DZ	"LD R,A"
+745+  0D5B 2C 41 00
+746+  0D5E 4C 44 20 41  DTable_O22:		DZ	"LD A,I"
+746+  0D62 2C 49 00
+747+  0D65 4C 44 20 41  DTable_O23:		DZ 	"LD A,R"
+747+  0D69 2C 52 00
+748+  0D6C 52 52 44 00  DTable_O24:		DZ 	"RRD"
+749+  0D70 52 4C 44 00  DTable_O25:		DZ 	"RLD"
+750+  0D74 4E 4F 50 00  DTable_O26: 		DZ	"NOP"
+751+  0D78
+# file closed: disassembler.z80
+ 35   0D78              			include "uart.z80"
+# file opened: uart.z80
+  1+  0D78              ;
+  2+  0D78              ; Title:	82C50 UART code
+  3+  0D78              ; Author:	Dean Belfield
+  4+  0D78              ; Created:	05/10/2020
+  5+  0D78              ; Last Updated:	05/10/2020
+  6+  0D78              ;
+  7+  0D78              ; Modinfo:
+  8+  0D78              ;
+  9+  0D78
+ 10+  0D78              UART_PORT:		EQU	0xB8		; UART Z80 port base address
+ 11+  0D78              UART_BAUD:		EQU	115200		; Maximum baud rate
+ 12+  0D78              UART_FREQUENCY: EQU 19660800	; 82C50 | 16C550 CLOCK
+ 13+  0D78
+ 14+  0D78              UART_REG_RBR:		EQU	UART_PORT+0	; Receive buffer
+ 15+  0D78              UART_REG_THR:		EQU	UART_PORT+0	; Transmitter holding
+ 16+  0D78              UART_REG_DLL:		EQU	UART_PORT+0	; Divisor latch low
+ 17+  0D78              UART_REG_IER:		EQU	UART_PORT+1	; Interrupt enable
+ 18+  0D78              UART_REG_DLH:		EQU	UART_PORT+1	; Divisor latch high
+ 19+  0D78              UART_REG_IIR:		EQU	UART_PORT+2	; Interrupt identification
+ 20+  0D78              UART_REG_LCR:		EQU	UART_PORT+3	; Line control
+ 21+  0D78              UART_REG_MCR:		EQU	UART_PORT+4	; Modem control
+ 22+  0D78              UART_REG_LSR:		EQU	UART_PORT+5	; Line status
+ 23+  0D78              UART_REG_MSR:		EQU	UART_PORT+6	; Modem status
+ 24+  0D78              UART_REG_SCR:		EQU 	UART_PORT+7	; Scratch
+ 25+  0D78
+ 26+  0D78              UART_TX_WAIT		EQU	1024		; Count before a TX times out
+ 27+  0D78
+ 28+  0D78              ; HL: Address in baud rate table
+ 29+  0D78              ;  A: Flow control bits
+ 30+  0D78              ;
+ 31+  0D78 F5           UART_INIT:	PUSH	AF
+ 32+  0D79 7E           			LD	A,(HL)
+ 33+  0D7A 23           			INC 	HL
+ 34+  0D7B 66           			LD	H,(HL)
+ 35+  0D7C 6F           			LD 	L,A
+ 36+  0D7D 3E 00        			LD	A,0x00
+ 36+  0D7F D3 B9          OUT (UART_REG_IER),A	; Disable interrupts
+ 37+  0D81 3E 80        			LD	A,0x80
+ 37+  0D83 D3 BB          OUT (UART_REG_LCR),A 	; Turn DLAB on
+ 38+  0D85 7D           			LD	A,L
+ 38+  0D86 D3 B8         	OUT (UART_REG_DLL),A	; Set divisor low
+ 39+  0D88 7C           			LD	A,H
+ 39+  0D89 D3 B9         	OUT (UART_REG_DLH),A	; Set divisor high
+ 40+  0D8B F1           			POP	AF
+ 40+  0D8C D3 BB         		OUT (UART_REG_LCR),A	; Write out flow control bits
+ 41+  0D8E C9           			RET
+ 42+  0D8F
+ 43+  0D8F              ; A: Data to write
+ 44+  0D8F              ; Returns:
+ 45+  0D8F              ; F = C if written
+ 46+  0D8F              ; F = NC if timed out
+ 47+  0D8F              ;
+ 48+  0D8F C5           UART_TX:	PUSH	BC				; Stack BC
+ 49+  0D90 F5           			PUSH	AF 				; Stack AF
+ 50+  0D91 06 00        			LD	B,low  UART_TX_WAIT		; Set CB to the transmit timeout
+ 51+  0D93 0E 04        			LD	C,high UART_TX_WAIT
+ 52+  0D95 DB BD        1:			IN	A,(UART_REG_LSR)		; Get the line status register
+ 53+  0D97 E6 20        			AND 	%00100000			; Check for TX empty
+ 54+  0D99 20 09        			JR	NZ,2F				; If set, then TX is empty, goto transmit
+ 55+  0D9B 10 F8        			DJNZ	1B
+ 55+  0D9D 0D             DEC	C
+ 55+  0D9E 20 F5          JR NZ,1B		; Otherwise loop
+ 56+  0DA0 F1           			POP	AF				; We've timed out at this point so
+ 57+  0DA1 C1           			POP	BC				; Restore the stack
+ 58+  0DA2 B7           			OR	A				; Clear the carry flag and preserve A
+ 59+  0DA3 C9           			RET
+ 60+  0DA4 F1           2:			POP	AF				; Good to send at this point, so
+ 61+  0DA5 D3 B8        			OUT	(UART_REG_THR),A		; Write the character to the UART transmit buffer
+ 62+  0DA7 CD B9 0D     			call	DELAY2
+ 63+  0DAA C1           			POP	BC				; Restore the stack
+ 64+  0DAB 37           			SCF					; Set the carry flag
+ 65+  0DAC C9           			RET
+ 66+  0DAD
+ 67+  0DAD              ; A: Data read
+ 68+  0DAD              ; Returns:
+ 69+  0DAD              ; F = C if character read
+ 70+  0DAD              ; F = NC if no character read
+ 71+  0DAD              ;
+ 72+  0DAD DB BD        UART_RX:	IN	A,(UART_REG_LSR)		; Get the line status register
+ 73+  0DAF E6 01        			AND 	%00000001			; Check for characters in buffer
+ 74+  0DB1 C8           			RET	Z						; Just ret (with carry clear) if no characters
+ 75+  0DB2 DB B8        			IN	A,(UART_REG_RBR)		; Read the character from the UART receive buffer
+ 76+  0DB4 CD B9 0D     			call	DELAY2
+ 77+  0DB7 37           			SCF 						; Set the carry flag
+ 78+  0DB8 C9           			RET
+ 79+  0DB9
+ 80+  0DB9              DELAY2:
+ 81+  0DB9 F5           			 PUSH   AF
+ 82+  0DBA 3E FF        			 LD     A,0xFF
+ 83+  0DBC 3D           DELAY2LOOP2: DEC    A
+ 84+  0DBD C2 BC 0D     			 JP     NZ,DELAY2LOOP2  ; JUMP TO DELAYLOOP2 IF A <> 0.
+ 85+  0DC0 F1           			 POP    AF
+ 86+  0DC1 C9           			 RET
+ 87+  0DC2
+ 88+  0DC2              ; Common baud rates
+ 89+  0DC2              ;
+ 90+  0DC2 60 00        UART_BAUD_1200:		DW	UART_BAUD/1200
+ 91+  0DC4 30 00        UART_BAUD_2400:		DW	UART_BAUD/2400
+ 92+  0DC6 18 00        UART_BAUD_4800:		DW	UART_BAUD/4800
+ 93+  0DC8 80 00        UART_BAUD_9600:		DW	UART_FREQUENCY/(9600 * 16)
+ 94+  0DCA 08 00        UART_BAUD_14400:	DW	UART_BAUD/14400
+ 95+  0DCC 06 00        UART_BAUD_19200:	DW	UART_BAUD/19200
+ 96+  0DCE 20 00        UART_BAUD_38400:	DW	UART_FREQUENCY/(38400 * 16)
+ 97+  0DD0 02 00        UART_BAUD_57600:	DW	UART_BAUD/57600
+ 98+  0DD2 0A 00        UART_BAUD_115200:	DW	UART_FREQUENCY/(115200 * 16)
+ 99+  0DD4
+# file closed: uart.z80
+ 36   0DD4
+# file closed: build.z80
