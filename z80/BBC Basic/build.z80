@@ -13,7 +13,7 @@ RAM_START		EQU 	0x8000
 
 PORT_STM_FILE		EQU	0x01			; The IO port for the SD card filing system
 
-BUILD_ROM		EQU 	1			; Set to 1 to build for ROM, or 0 to build for RAM
+BUILD_ROM		EQU 	0			; Set to 1 to build for ROM, or 0 to build for RAM
 
 			MODULE BUILD
 

@@ -1,2 +1,2 @@
 
-sjasmplus.exe build.z80 --lst=monitor.lst --raw=monitor.bin
+sjasmplus.exe build.asm --raw=monitor.bin
