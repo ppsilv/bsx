@@ -1,51 +1,62 @@
+; How to use lcd routines
+;                        CALL    initializeDisplay
+;                        LD      HL,MSGLCD001
+;                        CALL    LcdPrintString
+;                        LD      A, 0x40
+;                        CALL    cursorPos
+;                        LD      HL,MSGLCD002
+;                        CALL    LcdPrintString
+;
+;
+
 ;commands
-LCD_CLEARDISPLAY   	.EQU	0x01
-LCD_RETURNHOME     	.EQU	0x02
-LCD_ENTRYMODESET   	.EQU	0x04
-LCD_DISPLAYCONTROL 	.EQU	0x08
-LCD_CURSORSHIFT    	.EQU	0x10
-LCD_FUNCTIONSET    	.EQU	0x20
-LCD_SETCGRAMADDR   	.EQU	0x40
-LCD_SETDDRAMADDR   	.EQU	0x80
+LCD_CLEARDISPLAY   	EQU	0x01
+LCD_RETURNHOME     	EQU	0x02
+LCD_ENTRYMODESET   	EQU	0x04
+LCD_DISPLAYCONTROL 	EQU	0x08
+LCD_CURSORSHIFT    	EQU	0x10
+LCD_FUNCTIONSET    	EQU	0x20
+LCD_SETCGRAMADDR   	EQU	0x40
+LCD_SETDDRAMADDR   	EQU	0x80
 
 ;flags for display entry mode
-LCD_ENTRYRIGHT 		    .EQU	0x00
-LCD_ENTRYLEFT 		    .EQU	0x02
-LCD_ENTRYSHIFTINCREMENT     .EQU	0x01
-LCD_ENTRYSHIFTDECREMENT     .EQU	0x00
+LCD_ENTRYRIGHT 		    EQU	0x00
+LCD_ENTRYLEFT 		    EQU	0x02
+LCD_ENTRYSHIFTINCREMENT EQU	0x01
+LCD_ENTRYSHIFTDECREMENT EQU	0x00
 
 ;flags for display on/off control
-LCD_DISPLAYON  	.EQU	0x04
-LCD_DISPLAYOFF 	.EQU	0x00
-LCD_CURSORON   	.EQU	0x02
-LCD_CURSOROFF  	.EQU	0x00
-LCD_BLINKON    	.EQU	0x01
-LCD_BLINKOFF   	.EQU	0x00
+LCD_DISPLAYON  	EQU	0x04
+LCD_DISPLAYOFF 	EQU	0x00
+LCD_CURSORON   	EQU	0x02
+LCD_CURSOROFF  	EQU	0x00
+LCD_BLINKON    	EQU	0x01
+LCD_BLINKOFF   	EQU	0x00
 
 ;flags for display/cursor shift
-LCD_DISPLAYMOVE 	.EQU	0x08
-LCD_CURSORMOVE  	.EQU	0x00
-LCD_MOVERIGHT   	.EQU	0x04
-LCD_MOVELEFT    	.EQU	0x00
+LCD_DISPLAYMOVE 	EQU	0x08
+LCD_CURSORMOVE  	EQU	0x00
+LCD_MOVERIGHT   	EQU	0x04
+LCD_MOVELEFT    	EQU	0x00
 
 ;flags for function set
-LCD_8BITMODE 		.EQU	0x10
-LCD_4BITMODE 		.EQU	0x00
-LCD_2LINE    		.EQU	0x08
-LCD_1LINE    		.EQU	0x00
-LCD_5x10DOTS 		.EQU	0x04
-LCD_5x8DOTS  		.EQU	0x00
+LCD_8BITMODE 		EQU	0x10
+LCD_4BITMODE 		EQU	0x00
+LCD_2LINE    		EQU	0x08
+LCD_1LINE    		EQU	0x00
+LCD_5x10DOTS 		EQU	0x04
+LCD_5x8DOTS  		EQU	0x00
 
 ;flags for backlight control
-LCD_BACKLIGHT 		.EQU	0x08
-LCD_NOBACKLIGHT 	.EQU	0x00
+LCD_BACKLIGHT 		EQU	0x08
+LCD_NOBACKLIGHT 	EQU	0x00
 
-BlON    .EQU    0x08    ;   B00001000  Enable back light     pino 7 PCF8574
-EnOR 	.EQU    0x04    ;   B00000100  Enable bit            pino 6 PCF8574
-EnAND 	.EQU    0xFB    ;   B11111011  Enable bit            pino 6 PCF8574
-Rw 	.EQU	0x02    ;   B00000010  Read/Write bit        pino 5 PCF8574
-RsCMD 	.EQU	0xF0    ;   B11111000  ZERO RS, R/W, EN
-RsDATA 	.EQU	0x01    ;   B00000001  Register select bit   pino 4 PCF8574
+BlON    EQU    0x08    ;   B00001000  Enable back light     pino 7 PCF8574
+EnOR 	EQU    0x04    ;   B00000100  Enable bit            pino 6 PCF8574
+EnAND 	EQU    0xFB    ;   B11111011  Enable bit            pino 6 PCF8574
+Rw 	    EQU	0x02    ;   B00000010  Read/Write bit        pino 5 PCF8574
+RsCMD 	EQU	0xF0    ;   B11111000  ZERO RS, R/W, EN
+RsDATA 	EQU	0x01    ;   B00000001  Register select bit   pino 4 PCF8574
 ; pino  9 PCF8574 D4
 ; pino 10 PCF8574 D5
 ; pino 11 PCF8574 D6

@@ -12,7 +12,7 @@
 ; 29/05/2020:   O(ut) instruction now supports Hex and ASCII strings
 ; 03/06/2020:   Added Z80 disassembler
 ; 05/10/2020:   Added UART support, source formatting changes
-;
+; 29/09/2024:   Added RS232 baudrate to LCD
 ;
 ; Start
 ;
@@ -53,7 +53,7 @@ Start:                  LD      A, 0x80 			; All ports output A,B and C
 Memtest_OK:             LD      HL,MSG_READY
 
 Ready:                  PUSH    HL                      ; Stack the startup error message
-                        LD      HL,UART_BAUD_38400       ; Baud rate = 9600
+                        LD      HL,UART_BAUD_38400       ; Baud rate = 38400
                         LD      A,0x03                  ; 8 bits, 1 stop, no parity
                         CALL    UART_INIT               ; Initialise the UART
                         ;lcd routines
@@ -441,7 +441,7 @@ Print_Help:
 ;
 ; Messages
 ;
-MSG_STARTUP:            DZ "BSX Version 0.3.1\n\r"
+MSG_STARTUP:            DZ "BSX Version 0.3.3\n\r"
 MSG_CLEAR:              DZ "\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r"
 MSG_READY:              DZ "Ready:> "
 MSG_BADRAM:             DZ "Mem Fault\n\r"
@@ -463,7 +463,7 @@ MSG098: DZ "  - ? or H - Show this help \n\r"
 MSG099: DZ "  - Sending this value: "
 MSG100: DZ " to I2C chip: \n\r"
 
-MSGLCD001: DZ "BSX by pdsilva"
-MSGLCD002: DZ "Version 0.3.2"
+MSGLCD001: DZ "BSX by pdsilva  "
+MSGLCD002: DZ "V0.3.3 Uart38400"
 
 

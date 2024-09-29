@@ -5,8 +5,8 @@
 ;to compile zmac i2cdriver.z80 -o i2cdriver.hex
 
 
-SCL			.EQU	$80	
-SDA_WR		.EQU	$88	
+SCL			.EQU	$80
+SDA_WR		.EQU	$88
 SDA_RD		.EQU	$B0
 LCD_ADDR	.EQU	0x27 ;the PCF8574 address
 	
